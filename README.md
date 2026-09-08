@@ -108,22 +108,18 @@ bun run typecheck
 > **Unreleased changes:** this source places the canonical `ReleaseRegistry`
 > directly in `musicos::release` and makes it the only production derivation
 > parent for `release::new`. This is an upgrade-incompatible change that will
-> ship as a fresh publication; the IDs below describe the currently live
-> Testnet deployment only.
+> ship as a fresh publication.
 
 The current Testnet deployment is immutable: it was published and its
 `UpgradeCap` destroyed atomically.
 
-- `musicos`: see `published-at` under `[published.testnet]` in
-  [`Published.toml`](./Published.toml) — the authoritative record, kept
-  current on every publish so it can't drift out of sync with this README.
-- `ReleaseRegistry` (shared): `0x3f202b6f89cf635f54bd7ddee7a21e73c77b88a10f1fc451571e9e931997e8d6`
-- `bps` (immutable): `0x0f170226c83d612e407732f46170d02530fbc76bc626221642c4142d86759bff`
-- `share` (immutable): `0x7e7c860158dd0dd840133b68a608854e30101d496781bb835dc747f410732390`
-
 [`Published.toml`](./Published.toml) records this package's own publish
 metadata and is what dependent Move packages build against; treat it as the
-canonical source for this package's ids on every network.
+canonical source for this package's ids on every network. Dependency package
+ids (`bps`, `share`) come from each dependency's own `Published.toml` at the
+revision pinned in `Move.toml`. Object ids such as the shared
+`ReleaseRegistry` are deliberately not listed here until the production
+deployment has stabilized.
 
 ## Contributing
 
