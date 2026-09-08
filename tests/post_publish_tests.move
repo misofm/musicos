@@ -6,12 +6,12 @@
 /// (`uid_mut`) must keep working — that asymmetry is the protocol's core
 /// frozen-vs-evolvable contract.
 #[test_only]
-module miso::post_publish_tests;
+module musicos::post_publish_tests;
 
-use miso::composition::{Self, Composition, CompositionPublishedEvent};
-use miso::recording::{Self, Recording, RecordingPublishedEvent};
-use miso::release::{Self, Release, ReleasePublishedEvent};
-use miso::test_helpers::{Self, CompositionShare, RecordingShare};
+use musicos::composition::{Self, Composition, CompositionPublishedEvent};
+use musicos::recording::{Self, Recording, RecordingPublishedEvent};
+use musicos::release::{Self, Release, ReleasePublishedEvent};
+use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
 use std::unit_test::{assert_eq, destroy};
 use sui::dynamic_field;
 use sui::event;
@@ -77,7 +77,7 @@ fun publish_titled_release(
     let ctx = scenario.ctx();
     let (rel, cap) = release::new_for_testing(
         title.to_string(),
-        vector[miso::track::new_for_testing(
+        vector[musicos::track::new_for_testing(
             test_helpers::fake_id(ctx),
             test_helpers::fake_id(ctx),
             test_helpers::fake_id(ctx),
@@ -109,7 +109,7 @@ fun publish_release(scenario: &mut test_scenario::Scenario): release::ReleaseAdm
 
 // === Composition ===
 
-#[test, expected_failure(abort_code = ENotInitializedState, location = miso::composition)]
+#[test, expected_failure(abort_code = ENotInitializedState, location = musicos::composition)]
 fun composition_publish_twice_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let cap = publish_composition(&mut scenario);
@@ -151,7 +151,7 @@ fun composition_uid_mut_works_after_publish() {
 // construction), so post-publish immutability reduces to the publish-twice
 // aborts below plus the uid_mut-stays-open tests.
 
-#[test, expected_failure(abort_code = ENotInitializedState, location = miso::recording)]
+#[test, expected_failure(abort_code = ENotInitializedState, location = musicos::recording)]
 fun recording_publish_twice_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let cap = publish_recording(&mut scenario);
@@ -168,7 +168,7 @@ fun recording_publish_twice_aborts() {
 
 // === Release ===
 
-#[test, expected_failure(abort_code = ENotInitializedState, location = miso::release)]
+#[test, expected_failure(abort_code = ENotInitializedState, location = musicos::release)]
 fun release_publish_twice_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let cap = publish_release(&mut scenario);
@@ -225,7 +225,7 @@ fun release_uid_mut_works_after_publish() {
 /// shape of a wrong-cap attempt (`uid_mut` works in any lifecycle state, so
 /// the interesting adversarial case is post-publish, cross-actor, not
 /// pre-publish same-transaction).
-#[test, expected_failure(abort_code = EUnauthorized, location = miso::release)]
+#[test, expected_failure(abort_code = EUnauthorized, location = musicos::release)]
 fun release_uid_mut_wrong_cap_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let (owner_cap, owner_rel_id) = publish_titled_release(&mut scenario, b"Owner's Album");

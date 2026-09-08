@@ -16,13 +16,13 @@
 ///    every track was aimed at exactly this release.
 /// 5. Anyone can read the published release and its assigned track.
 #[test_only]
-module miso::release_e2e_tests;
+module musicos::release_e2e_tests;
 
-use miso::composition::{Self, Composition};
-use miso::recording::{Self, Recording};
-use miso::release::{Self, Release, ReleaseRegistry};
-use miso::test_helpers::{Self, CompositionShare, RecordingShare};
-use miso::track;
+use musicos::composition::{Self, Composition};
+use musicos::recording::{Self, Recording};
+use musicos::release::{Self, Release, ReleaseRegistry};
+use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
+use musicos::track;
 use std::unit_test::{assert_eq, destroy};
 use sui::event;
 use sui::test_scenario;
@@ -137,7 +137,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
 /// A track whose creator consented to a different release cannot be
 /// published in this one — the digest binding is enforced at
 /// `release::publish`.
-#[test, expected_failure(abort_code = 0, location = miso::track)] // EUnauthorizedAssignment
+#[test, expected_failure(abort_code = 0, location = musicos::track)] // EUnauthorizedAssignment
 fun publish_aborts_when_track_targets_a_different_release() {
     let mut scenario = test_scenario::begin(SONGWRITER);
     release::init_for_testing(scenario.ctx());

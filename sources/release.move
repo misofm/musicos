@@ -1,7 +1,7 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// Represents a music release in Miso.
+/// Represents a music release in musicos.
 /// A release is an ordered tracklist with per-track revenue distribution
 /// configuration. Cover art lives in the `cover_art` extension, not in core.
 ///
@@ -72,10 +72,10 @@
 /// designed extension surface, and it is the one trust assumption that never
 /// expires: integrators should model the cap holder as able to mutate or
 /// delete any extension data, forever.
-module miso::release;
+module musicos::release;
 
 use bps::bps;
-use miso::track::Track;
+use musicos::track::Track;
 use std::string::String;
 use sui::bcs::to_bytes;
 use sui::clock::Clock;
@@ -131,7 +131,7 @@ public struct Release has key {
     tracks: vector<Track>,
 }
 
-/// The canonical shared derivation-parent namespace for every Miso release.
+/// The canonical shared derivation-parent namespace for every musicos release.
 /// Its UID is the entire product: it is private, undeletable, and available
 /// only to `new`, so clients cannot bypass the canonical namespace.
 public struct ReleaseRegistry has key {
@@ -434,7 +434,7 @@ public fun new_for_testing(
     tracks: vector<Track>,
     ctx: &mut TxContext,
 ): (Release, ReleaseAdminCap) {
-    use miso::track;
+    use musicos::track;
 
     let mut release = Release {
         id: object::new(ctx),

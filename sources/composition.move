@@ -1,7 +1,7 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// Represents a musical composition (song, instrumental work) in Miso.
+/// Represents a musical composition (song, instrumental work) in musicos.
 /// Compositions are the underlying written works that recordings are based on.
 /// Each composition has its own share token for ownership distribution.
 ///
@@ -35,7 +35,7 @@
 /// designed extension surface, and it is the one trust assumption that never
 /// expires: integrators should model the cap holder as able to mutate or
 /// delete any extension data, forever.
-module miso::composition;
+module musicos::composition;
 
 use bps::bps::{Self, BPS};
 use miso_share::share;

@@ -1,4 +1,4 @@
-# Security Audit — `miso` (protocol)
+# Security Audit — `musicos` (protocol)
 
 **Revision:** working tree (source snapshot — the repo carries no `.git`;
 pre-OSS history in `miso-protocol-history-pre-oss.bundle` at repo root) ·
@@ -10,7 +10,7 @@ pre-OSS history in `miso-protocol-history-pre-oss.bundle` at repo root) ·
 
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
 their admin capabilities, and the extension authorization contract that all
-`protocol-extensions/*` packages build on. Verdict: **safe to publish — no
+`musicos-extensions/*` packages build on. Verdict: **safe to publish — no
 Critical/High/Medium findings.**
 
 ## What it does
@@ -103,7 +103,7 @@ holder chooses to run, which is the documented, permanent trust assumption
   at that rev. **Resolved 2026-08-23: re-pinned to `miso_share`
   `d67ff8cd377db2809fc97455e82e87ff1794073e`** (the exact audited hardening
   rev); `sui move build && sui move test` green (51/51) at the new pin. Same
-  advisory in the misofm plugin audits is resolved by re-pinning `miso` to the
+  advisory in the misofm plugin audits is resolved by re-pinning `musicos` to the
   protocol rev carrying this change.
 - **I3 (Informational): `release::new` is permissionless — consent is
   cryptographic, not access-controlled.** Verified non-abusable: the digest
@@ -169,7 +169,7 @@ or event sufficiency.
   negatives; post-publish immutability.
 - Cross-read of consumers: `misofm/vault-plugins/{composition_routed_stake,
   composition_royalty_pool, recording_royalty_pool}` (audits + sources) and
-  `protocol-extensions/release_credits`, `party-extensions/party_profile` —
+  `musicos-extensions/release_credits`, `party-extensions/party_profile` —
   all consume the cap-gated `uid_mut` contract exactly as designed; none can
   forge `Track` consent or another extension's keys.
 

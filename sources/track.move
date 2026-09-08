@@ -24,10 +24,10 @@
 /// share-type — those are consumed off-chain and derived from the recording
 /// via `recording_id`; a `Track` embeds exactly the facts on-chain consumers
 /// cannot reach any other way.
-module miso::track;
+module musicos::track;
 
 use bps::bps::{Self, BPS};
-use miso::recording::{Recording, RecordingAdminCap};
+use musicos::recording::{Recording, RecordingAdminCap};
 
 // === Errors ===
 

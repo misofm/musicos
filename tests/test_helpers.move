@@ -1,5 +1,5 @@
 #[test_only]
-module miso::test_helpers;
+module musicos::test_helpers;
 
 use std::string::String;
 

@@ -7,13 +7,13 @@
 /// (publish, take_shared, wrong-cap-by-a-different-actor) lives in
 /// `post_publish_tests` and `release_e2e_tests`.
 #[test_only]
-module miso::release_tests;
+module musicos::release_tests;
 
-use miso::composition;
-use miso::recording;
-use miso::release;
-use miso::test_helpers::{Self, CompositionShare, RecordingShare};
-use miso::track;
+use musicos::composition;
+use musicos::recording;
+use musicos::release;
+use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
+use musicos::track;
 use std::unit_test::{assert_eq, destroy};
 
 // Error codes from release.move
@@ -65,7 +65,7 @@ fun composition_and_recording(
 
 // === Title Length ===
 
-#[test, expected_failure(abort_code = EMaxTitleLengthExceeded, location = miso::release)]
+#[test, expected_failure(abort_code = EMaxTitleLengthExceeded, location = musicos::release)]
 fun new_title_too_long_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -81,7 +81,7 @@ fun new_title_too_long_aborts() {
 
 // === Max Tracks ===
 
-#[test, expected_failure(abort_code = EMaxTracksExceeded, location = miso::release)]
+#[test, expected_failure(abort_code = EMaxTracksExceeded, location = musicos::release)]
 fun new_exceeds_max_tracks_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -116,7 +116,7 @@ fun test_release(ctx: &mut TxContext): (release::Release, release::ReleaseAdminC
 
 // === Creation Validation ===
 
-#[test, expected_failure(abort_code = EEmptyString, location = miso::release)]
+#[test, expected_failure(abort_code = EEmptyString, location = musicos::release)]
 fun new_empty_title_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -130,7 +130,7 @@ fun new_empty_title_aborts() {
     destroy(registry);
 }
 
-#[test, expected_failure(abort_code = ENoTracks, location = miso::release)]
+#[test, expected_failure(abort_code = ENoTracks, location = musicos::release)]
 fun new_without_tracks_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -144,7 +144,7 @@ fun new_without_tracks_aborts() {
     destroy(registry);
 }
 
-#[test, expected_failure(abort_code = EInvalidTrackSplitsSum, location = miso::release)]
+#[test, expected_failure(abort_code = EInvalidTrackSplitsSum, location = musicos::release)]
 fun new_with_splits_below_total_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -158,7 +158,7 @@ fun new_with_splits_below_total_aborts() {
     destroy(registry);
 }
 
-#[test, expected_failure(abort_code = EInvalidTrackSplitsSum, location = miso::release)]
+#[test, expected_failure(abort_code = EInvalidTrackSplitsSum, location = musicos::release)]
 fun new_with_splits_above_total_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);

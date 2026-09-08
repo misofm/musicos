@@ -6,10 +6,10 @@
 /// `test_scenario` accordingly. The fuller publish/uid_mut/wrong-cap
 /// ownership flows live in `post_publish_tests`.
 #[test_only]
-module miso::composition_tests;
+module musicos::composition_tests;
 
-use miso::composition::{Self, Composition};
-use miso::test_helpers::{Self, CompositionShare};
+use musicos::composition::{Self, Composition};
+use musicos::test_helpers::{Self, CompositionShare};
 use std::unit_test::{assert_eq, destroy};
 use sui::test_scenario;
 
@@ -112,7 +112,7 @@ fun test_new_above_100_percent() {
 
 // === Boundary Error Conditions ===
 
-#[test, expected_failure(abort_code = EEmptyString, location = miso::composition)]
+#[test, expected_failure(abort_code = EEmptyString, location = musicos::composition)]
 fun test_new_empty_title() {
     let ctx = &mut tx_context::dummy();
     let (comp, cap) = composition::new_for_testing<CompositionShare>(b"".to_string(), 1500, ctx);
@@ -120,7 +120,7 @@ fun test_new_empty_title() {
     destroy(cap);
 }
 
-#[test, expected_failure(abort_code = EMaxTitleLengthExceeded, location = miso::composition)]
+#[test, expected_failure(abort_code = EMaxTitleLengthExceeded, location = musicos::composition)]
 fun test_new_title_too_long() {
     let ctx = &mut tx_context::dummy();
     let (comp, cap) = composition::new_for_testing<CompositionShare>(

@@ -6,11 +6,11 @@
 /// afterward, so this stays a single `tx_context::dummy()` transaction rather
 /// than a `test_scenario`.
 #[test_only]
-module miso::kitchen_sink_tests;
+module musicos::kitchen_sink_tests;
 
-use miso::release;
-use miso::test_helpers;
-use miso::track;
+use musicos::release;
+use musicos::test_helpers;
+use musicos::track;
 use std::unit_test::destroy;
 
 // === Tests ===

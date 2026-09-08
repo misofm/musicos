@@ -13,10 +13,10 @@
 /// only reachable by calling the package-visible `assign` a second time
 /// directly, as done here.
 #[test_only]
-module miso::track_tests;
+module musicos::track_tests;
 
-use miso::test_helpers;
-use miso::track;
+use musicos::test_helpers;
+use musicos::track;
 use std::unit_test::{assert_eq, destroy};
 
 // Error codes mirrored from track.move.
@@ -49,7 +49,7 @@ fun assign_transitions_unassigned_to_assigned() {
 /// unreachable (a release publishes, and therefore assigns each of its
 /// tracks, exactly once), so the second call here goes directly through the
 /// package-visible `assign` rather than through `release::publish`.
-#[test, expected_failure(abort_code = EAlreadyAssigned, location = miso::track)]
+#[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
 fun assign_twice_aborts() {
     let ctx = &mut tx_context::dummy();
     let comp_id = test_helpers::fake_id(ctx);
@@ -84,7 +84,7 @@ fun target_release_id_reads_unassigned_commitment() {
 /// An assigned track only ever exists inside the published release it came
 /// from, so callers already have the answer from context — see the accessor's
 /// doc comment in track.move.
-#[test, expected_failure(abort_code = EAlreadyAssigned, location = miso::track)]
+#[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
 fun target_release_id_on_assigned_track_aborts() {
     let ctx = &mut tx_context::dummy();
     let comp_id = test_helpers::fake_id(ctx);

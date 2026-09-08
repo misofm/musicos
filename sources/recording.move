@@ -1,7 +1,7 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// Represents an audio recording of a composition in Miso.
+/// Represents an audio recording of a composition in musicos.
 /// Recordings are the audio performances that are distributed and played.
 /// Each recording has its own share token for ownership distribution.
 ///
@@ -47,7 +47,7 @@
 ///
 /// The recording carries its parent composition's identity two ways. The
 /// `CompositionShare` phantom type parameter is the durable identity (a share
-/// currency is published independently of miso and survives a fresh
+/// currency is published independently of musicos and survives a fresh
 /// republish, whereas an object ID does not) and makes the
 /// recording↔composition lineage compile-time enforced wherever the two meet.
 /// The embedded `composition_id` is the address-level handle: Move cannot
@@ -61,9 +61,9 @@
 /// (only to read its royalty rate and id), so publishing recordings under a
 /// composition neither contends on the composition's shared-object version nor
 /// collides on a per-composition index.
-module miso::recording;
+module musicos::recording;
 
-use miso::composition::Composition;
+use musicos::composition::Composition;
 use miso_share::share;
 use sui::balance::Balance;
 use sui::clock::Clock;

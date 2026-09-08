@@ -13,12 +13,12 @@
 /// here, so `tx_context::dummy()` is sufficient. Ownership-flow behavior
 /// lives in `post_publish_tests` and `release_e2e_tests`.
 #[test_only]
-module miso::production_constructor_tests;
+module musicos::production_constructor_tests;
 
-use miso::composition;
-use miso::recording;
-use miso::share::{Self as test_share, Share};
-use miso::test_helpers::{Self, CompositionShare};
+use musicos::composition;
+use musicos::recording;
+use musicos::share::{Self as test_share, Share};
+use musicos::test_helpers::{Self, CompositionShare};
 use std::unit_test::{assert_eq, destroy};
 
 /// 10,000,000.000000 tokens at 6 decimals — must match share::SUPPLY.
@@ -198,7 +198,7 @@ fun recording_new_independent_ids_succeed() {
     destroy(currency1);
 }
 
-#[test, expected_failure(abort_code = 35, location = miso::composition)] // EEmptyString
+#[test, expected_failure(abort_code = 35, location = musicos::composition)] // EEmptyString
 fun composition_new_empty_title_aborts() {
     let ctx = &mut tx_context::dummy();
     let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
@@ -217,7 +217,7 @@ fun composition_new_empty_title_aborts() {
     destroy(currency);
 }
 
-#[test, expected_failure(abort_code = 33, location = miso::composition)] // EMaxTitleLengthExceeded
+#[test, expected_failure(abort_code = 33, location = musicos::composition)] // EMaxTitleLengthExceeded
 fun composition_new_title_too_long_aborts() {
     let ctx = &mut tx_context::dummy();
     let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);

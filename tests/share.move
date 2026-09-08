@@ -8,7 +8,7 @@
 /// `share::initialize`) be exercised in unit tests instead of only the
 /// `*_for_testing` bypasses.
 #[test_only]
-module miso::share;
+module musicos::share;
 
 use sui::coin::TreasuryCap;
 use sui::coin_registry::{Self, Currency};

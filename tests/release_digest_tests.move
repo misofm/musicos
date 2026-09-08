@@ -7,10 +7,10 @@
 /// mechanics would add nothing, so these stay `tx_context::dummy()` (used
 /// only to mint fixture IDs via `test_helpers::fake_id`).
 #[test_only]
-module miso::release_digest_tests;
+module musicos::release_digest_tests;
 
-use miso::release;
-use miso::test_helpers;
+use musicos::release;
+use musicos::test_helpers;
 use std::unit_test::{assert_eq, destroy};
 use sui::bcs::to_bytes;
 use sui::hash::blake2b256;

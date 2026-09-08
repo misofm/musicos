@@ -1,8 +1,8 @@
 #[test_only]
-module miso::recording_tests;
+module musicos::recording_tests;
 
-use miso::recording::{Self, Recording};
-use miso::test_helpers::{Self, RecordingShare, CompositionShare};
+use musicos::recording::{Self, Recording};
+use musicos::test_helpers::{Self, RecordingShare, CompositionShare};
 use std::unit_test::destroy;
 use sui::test_scenario;
 

@@ -9,14 +9,14 @@ Miso models the core objects of recorded music — **compositions**, **recording
 
 ## Repository layout
 
-This repo is the `miso` core protocol package (Move 2024) — build/test with `sui move` from the repo root.
+This repo is the `musicos` core protocol package (Move 2024) — build/test with `sui move` from the repo root.
 
 The TypeScript SDK — typed queries, transaction builders, and BCS event parsers that
 mirror the core Move ABI — lives in its own repo,
 [`misonetwork/sdk`](https://github.com/misonetwork/sdk) (`@misonetwork/sdk`), regenerated
 from this package's Move source via `bun run codegen`.
 
-First-party **extensions** — credits, cover art, genre, royalty pools, revenue distributor, attribution, and more — live in a separate repo, [`miso-protocol-extensions`](https://github.com/misofm/protocol-extensions). Each is a standalone Move package that attaches to core objects via cap-gated `&mut UID` access, without modifying or re-publishing the core.
+First-party **extensions** — credits, cover art, genre, royalty pools, revenue distributor, attribution, and more — live in a separate repo, [`musicos-extensions`](https://github.com/misofm/musicos-extensions). Each is a standalone Move package that attaches to core objects via cap-gated `&mut UID` access, without modifying or re-publishing the core.
 
 ## Data model
 
@@ -34,7 +34,7 @@ Supporting type: **`Track`** (a recording placed on a release, created directly 
 
 A release's id is **derived from a digest of its exact economics**: the ordered
 list of `(recording, split)` pairs plus a creator nonce, claimed as a derived
-child of the canonical `ReleaseRegistry` shared by `miso::release` package
+child of the canonical `ReleaseRegistry` shared by `musicos::release` package
 initialization. A `Track` targets that derived id at creation, so creating one
 consents to the release's precise membership, splits, and running order — and
 nothing else. The stored tracklist has the same shape as the digest pre-image:
@@ -92,7 +92,7 @@ sui move build
 sui move test
 ```
 
-First-party extensions live in [`miso-protocol-extensions`](https://github.com/misofm/protocol-extensions); each is a standalone package that builds the same way.
+First-party extensions live in [`musicos-extensions`](https://github.com/misofm/musicos-extensions); each is a standalone package that builds the same way.
 
 The TypeScript SDK lives in [`misonetwork/sdk`](https://github.com/misonetwork/sdk):
 
@@ -106,7 +106,7 @@ bun run typecheck
 ## Deployment
 
 > **Unreleased changes:** this source places the canonical `ReleaseRegistry`
-> directly in `miso::release` and makes it the only production derivation
+> directly in `musicos::release` and makes it the only production derivation
 > parent for `release::new`. This is an upgrade-incompatible change that will
 > ship as a fresh publication; the IDs below describe the currently live
 > Testnet deployment only.
@@ -114,7 +114,7 @@ bun run typecheck
 The current Testnet deployment is immutable: it was published and its
 `UpgradeCap` destroyed atomically.
 
-- `miso`: `0x5bb3ec642b1f7debd8bc2acbc16232abe893844d5978431d1cc0fbdddad73b97`
+- `musicos`: `0x5bb3ec642b1f7debd8bc2acbc16232abe893844d5978431d1cc0fbdddad73b97`
 - `ReleaseRegistry` (shared): `0x3f202b6f89cf635f54bd7ddee7a21e73c77b88a10f1fc451571e9e931997e8d6`
 - `bps` (immutable): `0x0f170226c83d612e407732f46170d02530fbc76bc626221642c4142d86759bff`
 - `miso_share` (immutable): `0x7e7c860158dd0dd840133b68a608854e30101d496781bb835dc747f410732390`
