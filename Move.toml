@@ -6,4 +6,4 @@ authors = ["Miso Labs, Inc. (build@miso.network)"]
 
 [dependencies]
 bps = { git = "https://github.com/unconfirmedlabs/bps.git", rev = "4ca1972a67d35c972ca567de7b08315e3778e52b" }
-miso_share = { git = "https://github.com/misofm/share.git", rev = "36dcbf2db710c9544c80427e128324733b6f6044" }
+miso_share = { git = "https://github.com/misofm/share.git", rev = "4999b7d639131fbd5b416b14ca798c28c0a6107d" }
