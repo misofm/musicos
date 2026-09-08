@@ -3,7 +3,7 @@
 **Revision:** `4fed48b2b5632122fb677d742881259c65b1bc78` (git HEAD) ·
 **Date:** 2026-08-23 · **Toolchain:** sui 1.77.2-51d177ad7d65
 
-**Pinned dependencies** (`Move.toml`): `bps` `4ca1972a` · `miso_share`
+**Pinned dependencies** (`Move.toml`): `bps` `4ca1972a` · `share`
 `4999b7d6` (audited at exactly this rev; see `share/AUDIT.md`). Re-pinned from
 `047d74d5` on 2026-08-23 per I2 — resolved.
 
@@ -59,7 +59,7 @@ cap-gated:
   This is sound only because share-type ↔ object uniqueness holds: a
   `Recording<RS, CS>` can be created at most once per `RS`, because
   `recording::new` consumes the unique `TreasuryCap<RS>` through
-  `share::initialize` (`recording.move:221`), and `miso_share` proves one
+  `share::initialize` (`recording.move:221`), and `share` proves one
   currency/one cap per share type (`share/AUDIT.md`, cap-uniqueness proof).
   One share type ⟹ one recording ⟹ one cap. Same for compositions. **This is
   the single most load-bearing imported invariant in the package** — see I2.
@@ -93,13 +93,13 @@ holder chooses to run, which is the documented, permanent trust assumption
   namespace, and the vault-plugin architecture already treats cap-authorized
   code as fully trusted.
 - **I2 (Informational, RESOLVED 2026-08-23): type-scoped caps inherit
-  `miso_share`'s guarantees at a stale pin.** `Move.toml` previously pinned
-  `miso_share` `047d74d5`, which predates the audited hardening rev `d67ff8c`
+  `share`'s guarantees at a stale pin.** `Move.toml` previously pinned
+  `share` `047d74d5`, which predates the audited hardening rev `d67ff8c`
   (the `ETreasuryCapMismatch` cap binding). Per the share audit the hardening
   is defense-in-depth — cap uniqueness already makes the path unreachable — so
   the pin was sound, but a legacy-migrated share currency carrying
   `RegulatedState::Unknown` (concealing a `DenyCapV2`) would pass `initialize`
-  at that rev. **Resolved 2026-08-23: re-pinned to `miso_share`
+  at that rev. **Resolved 2026-08-23: re-pinned to `share`
   `d67ff8cd377db2809fc97455e82e87ff1794073e`** (the exact audited hardening
   rev); `sui move build && sui move test` green (51/51) at the new pin. Same
   advisory in the misofm plugin audits is resolved by re-pinning `musicos` to the
@@ -174,7 +174,7 @@ or event sufficiency.
 
 ## Load-bearing assumptions
 
-- `miso_share` cap/currency uniqueness per share type (audited at `d67ff8c`;
+- `share` cap/currency uniqueness per share type (audited at `d67ff8c`;
   pinned here at exactly `4999b7d6` — I2 resolved 2026-08-23). **Everything
   type-scoped rests on this.**
 - Framework: `derived_object::claim` uniqueness; `transfer::share_object`

@@ -57,7 +57,7 @@ Compositions, recordings, and releases are **build-then-freeze**: they are creat
 
 ### Ownership
 
-Ownership is expressed through **share tokens** (via the [`miso_share`](https://github.com/misofm/share) package): each composition and recording initializes a fixed-supply share currency, and the set of share holders *is* the set of rightsholders. There are no separate label / publisher / rightsholder fields — ownership is the revenue claim.
+Ownership is expressed through **share tokens** (via the [`share`](https://github.com/misofm/share) package): each composition and recording initializes a fixed-supply share currency, and the set of share holders *is* the set of rightsholders. There are no separate label / publisher / rightsholder fields — ownership is the revenue claim.
 
 ## Design principles
 
@@ -79,7 +79,7 @@ composition   recording   release   track
 | Dependency | Source | Purpose |
 |------------|--------|---------|
 | `bps`   | `unconfirmedlabs/bps` | Basis-point math |
-| `miso_share` | [`misofm/share`](https://github.com/misofm/share) | Fixed-supply share/ownership currency |
+| `share` | [`misofm/share`](https://github.com/misofm/share) | Fixed-supply share/ownership currency |
 
 The core package is intentionally lean — `audio`, `partyos`, `ori`, and `gengo` are no longer core dependencies; that functionality now lives in the extensions repo.
 
@@ -119,7 +119,7 @@ The current Testnet deployment is immutable: it was published and its
   current on every publish so it can't drift out of sync with this README.
 - `ReleaseRegistry` (shared): `0x3f202b6f89cf635f54bd7ddee7a21e73c77b88a10f1fc451571e9e931997e8d6`
 - `bps` (immutable): `0x0f170226c83d612e407732f46170d02530fbc76bc626221642c4142d86759bff`
-- `miso_share` (immutable): `0x7e7c860158dd0dd840133b68a608854e30101d496781bb835dc747f410732390`
+- `share` (immutable): `0x7e7c860158dd0dd840133b68a608854e30101d496781bb835dc747f410732390`
 
 [`Published.toml`](./Published.toml) records this package's own publish
 metadata and is what dependent Move packages build against; treat it as the

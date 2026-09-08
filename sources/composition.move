@@ -38,7 +38,7 @@
 module musicos::composition;
 
 use bps::bps::{Self, BPS};
-use miso_share::share;
+use share::share;
 use std::string::String;
 use sui::balance::Balance;
 use sui::clock::Clock;

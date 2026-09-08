@@ -64,7 +64,7 @@
 module musicos::recording;
 
 use musicos::composition::Composition;
-use miso_share::share;
+use share::share;
 use sui::balance::Balance;
 use sui::clock::Clock;
 use sui::coin::TreasuryCap;

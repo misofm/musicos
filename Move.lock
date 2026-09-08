@@ -22,17 +22,17 @@ use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
-[pinned.mainnet.miso_share]
-source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "4999b7d639131fbd5b416b14ca798c28c0a6107d" }
-use_environment = "mainnet"
-manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
 [pinned.mainnet.musicos]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "3D6EC55F69996D148A47B5A8FC019706FADD1577DE47748EF1E6CED1DC48B90B"
-deps = { bps = "bps", miso_share = "miso_share", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "9BB7116D620D718466F3EA2218898A0A00B583E502281A36C36B4DA5DA9AE625"
+deps = { bps = "bps", share = "share", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.share]
+source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "4311b8400272cf641d35569a8a262fc12a957c75" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.MoveStdlib]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "2a0becb2fcc6989e492981104af67f62f2c9511a" }
@@ -52,14 +52,14 @@ use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
-[pinned.testnet.miso_share]
-source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "4999b7d639131fbd5b416b14ca798c28c0a6107d" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
 [pinned.testnet.musicos]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "8ABEF6728361420B2EDD62D2E4292AEE53C7FB6EE6DD6953C4CB77A522CA8AA7"
-deps = { bps = "bps", miso_share = "miso_share", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "2B0310BD0BE225E02688BE35EC89B7F53E1494F234743C15A5FA3699DA2F1720"
+deps = { bps = "bps", share = "share", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.share]
+source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "4311b8400272cf641d35569a8a262fc12a957c75" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
