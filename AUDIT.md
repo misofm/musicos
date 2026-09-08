@@ -1,11 +1,10 @@
 # Security Audit — `musicos` (protocol)
 
-**Revision:** working tree (source snapshot — the repo carries no `.git`;
-pre-OSS history in `miso-protocol-history-pre-oss.bundle` at repo root) ·
+**Revision:** `4fed48b2b5632122fb677d742881259c65b1bc78` (git HEAD) ·
 **Date:** 2026-08-23 · **Toolchain:** sui 1.77.2-51d177ad7d65
 
-**Pinned dependencies** (`Move.toml`): `bps` `26fa571e` · `miso_share`
-`d67ff8c` (audited at exactly this rev; see `share/AUDIT.md`). Re-pinned from
+**Pinned dependencies** (`Move.toml`): `bps` `4ca1972a` · `miso_share`
+`4999b7d6` (audited at exactly this rev; see `share/AUDIT.md`). Re-pinned from
 `047d74d5` on 2026-08-23 per I2 — resolved.
 
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
@@ -169,18 +168,18 @@ or event sufficiency.
   negatives; post-publish immutability.
 - Cross-read of consumers: `misofm/vault-plugins/{composition_routed_stake,
   composition_royalty_pool, recording_royalty_pool}` (audits + sources) and
-  `musicos-extensions/release_credits`, `party-extensions/party_profile` —
+  `musicos-extensions/release_credits`, `partyos-extensions/party_profile` —
   all consume the cap-gated `uid_mut` contract exactly as designed; none can
   forge `Track` consent or another extension's keys.
 
 ## Load-bearing assumptions
 
 - `miso_share` cap/currency uniqueness per share type (audited at `d67ff8c`;
-  pinned here at exactly `d67ff8c` — I2 resolved 2026-08-23). **Everything
+  pinned here at exactly `4999b7d6` — I2 resolved 2026-08-23). **Everything
   type-scoped rests on this.**
 - Framework: `derived_object::claim` uniqueness; `transfer::share_object`
   finality; `send_funds`/`withdraw_funds_from_object` UID-gated accumulator
   semantics; BCS determinism for the digest. Framework rev per sibling
-  lockfiles: `b9149cbf` (move-stdlib/sui-framework).
-- `bps` (pinned `26fa571e`, audited clean): `new` bounds to 10,000; `apply`
+  lockfiles: `2a0becb2` (move-stdlib/sui-framework).
+- `bps` (pinned `4ca1972a`, audited clean): `new` bounds to 10,000; `apply`
   floors via widening `mul_div`.

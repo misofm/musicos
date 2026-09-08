@@ -12,9 +12,9 @@ Miso models the core objects of recorded music — **compositions**, **recording
 This repo is the `musicos` core protocol package (Move 2024) — build/test with `sui move` from the repo root.
 
 The TypeScript SDK — typed queries, transaction builders, and BCS event parsers that
-mirror the core Move ABI — lives in its own repo,
-[`misonetwork/sdk`](https://github.com/misonetwork/sdk) (`@misonetwork/sdk`), regenerated
-from this package's Move source via `bun run codegen`.
+mirror the core Move ABI — lives in the [`misofm/sdks`](https://github.com/misofm/sdks)
+monorepo (`@misofm/protocol`), regenerated from this package's Move source via
+`bun run codegen`.
 
 First-party **extensions** — credits, cover art, genre, royalty pools, revenue distributor, attribution, and more — live in a separate repo, [`musicos-extensions`](https://github.com/misofm/musicos-extensions). Each is a standalone Move package that attaches to core objects via cap-gated `&mut UID` access, without modifying or re-publishing the core.
 
@@ -94,11 +94,11 @@ sui move test
 
 First-party extensions live in [`musicos-extensions`](https://github.com/misofm/musicos-extensions); each is a standalone package that builds the same way.
 
-The TypeScript SDK lives in [`misonetwork/sdk`](https://github.com/misonetwork/sdk):
+The TypeScript SDK lives in [`misofm/sdks`](https://github.com/misofm/sdks):
 
 ```sh
-git clone https://github.com/misonetwork/sdk ../sdk
-cd ../sdk
+git clone https://github.com/misofm/sdks ../sdks
+cd ../sdks
 bun install
 bun run typecheck
 ```
@@ -114,17 +114,16 @@ bun run typecheck
 The current Testnet deployment is immutable: it was published and its
 `UpgradeCap` destroyed atomically.
 
-- `musicos`: `0x5bb3ec642b1f7debd8bc2acbc16232abe893844d5978431d1cc0fbdddad73b97`
+- `musicos`: see `published-at` under `[published.testnet]` in
+  [`Published.toml`](./Published.toml) — the authoritative record, kept
+  current on every publish so it can't drift out of sync with this README.
 - `ReleaseRegistry` (shared): `0x3f202b6f89cf635f54bd7ddee7a21e73c77b88a10f1fc451571e9e931997e8d6`
 - `bps` (immutable): `0x0f170226c83d612e407732f46170d02530fbc76bc626221642c4142d86759bff`
 - `miso_share` (immutable): `0x7e7c860158dd0dd840133b68a608854e30101d496781bb835dc747f410732390`
 
-Current package and object ids for every network live in
-[`misonetwork/miso-deployments`](https://github.com/misonetwork/miso-deployments),
-the canonical deployment manifest across all Miso repos — reference it rather
-than hardcoding ids. [`Published.toml`](./Published.toml) records
-this package's own publish metadata and is what dependent Move packages build
-against.
+[`Published.toml`](./Published.toml) records this package's own publish
+metadata and is what dependent Move packages build against; treat it as the
+canonical source for this package's ids on every network.
 
 ## Contributing
 
