@@ -53,7 +53,7 @@ Audio itself is **not** part of the core package — the master attaches to a `R
 
 ### Lifecycle
 
-Compositions, recordings, and releases are **build-then-freeze**: they are created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. `publish()` emits a single lean event carrying just the object's id, which an indexer uses as a signal to fetch the now-final object.
+Compositions, recordings, and releases are **build-then-freeze**: they are created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. Creation and publication emit self-contained rich events with object/capability linkage, immutable fields, timestamps, and ordered release-track data; publication events are emitted after the object is shared.
 
 ### Ownership
 

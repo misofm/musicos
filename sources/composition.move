@@ -105,13 +105,31 @@ public enum CompositionState has copy, drop, store {
 
 // === Events ===
 
-/// Emitted once when a composition is published. A pure pointer: it carries the
-/// composition's identity. A composition's embedded fields — title and royalty
-/// rate included — are immutable, so an indexer treats this as a signal to
-/// fetch the full object by `composition_id` once; all indexed data, including
-/// the publish timestamp, lives in the object itself and never changes.
+/// Emitted once when a composition is created.
+public struct CompositionCreatedEvent<phantom CompositionShare> has copy, drop {
+    composition_id: address,
+    composition_admin_cap_id: address,
+    share_currency_id: address,
+    consumed_treasury_cap_id: address,
+    created_by: address,
+    title_bytes: vector<u8>,
+    royalty_rate_bps: u16,
+    share_supply_before: u64,
+    share_supply_after: u64,
+    shares_returned: u64,
+    share_decimals: u8,
+    share_supply_fixed_after: bool,
+}
+
+/// Emitted once when a composition is published.
 public struct CompositionPublishedEvent<phantom CompositionShare> has copy, drop {
-    composition_id: ID,
+    composition_id: address,
+    composition_admin_cap_id: address,
+    clock_id: address,
+    title_bytes: vector<u8>,
+    royalty_rate_bps: u16,
+    published_at_ms: u64,
+    shared_after: bool,
 }
 
 // === Public Functions ===
@@ -135,7 +153,7 @@ public fun new<CompositionShare>(
     title: String,
     royalty_rate_bps: u16,
     share_currency: &mut Currency<CompositionShare>,
-    share_treasury_cap: TreasuryCap<CompositionShare>,
+    mut share_treasury_cap: TreasuryCap<CompositionShare>,
     ctx: &mut TxContext,
 ): (
     Composition<CompositionShare>,
@@ -144,6 +162,13 @@ public fun new<CompositionShare>(
 ) {
     assert!(!title.is_empty(), EEmptyString);
     assert!(title.length() <= MAX_TITLE_LENGTH, EMaxTitleLengthExceeded);
+
+    let title_bytes = title.substring(0, title.length()).into_bytes();
+    let share_currency_id = object::id_address(share_currency);
+    let consumed_treasury_cap_id = object::id_address(&share_treasury_cap);
+    let share_decimals = share_currency.decimals();
+    let share_supply_before = share_treasury_cap.supply().value();
+    let created_by = ctx.sender();
 
     let mut composition = Composition<CompositionShare> {
         id: object::new(ctx),
@@ -161,6 +186,27 @@ public fun new<CompositionShare>(
         share_treasury_cap,
     );
 
+    let composition_id = object::id_address(&composition);
+    let composition_admin_cap_id = object::id_address(&composition_admin_cap);
+    let share_supply_after = composition_shares.value();
+    let shares_returned = composition_shares.value();
+    let share_supply_fixed_after = share_currency.is_supply_fixed();
+
+    emit(CompositionCreatedEvent<CompositionShare> {
+        composition_id,
+        composition_admin_cap_id,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        title_bytes,
+        royalty_rate_bps: royalty_rate_bps,
+        share_supply_before,
+        share_supply_after,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+    });
+
     (composition, composition_admin_cap, composition_shares)
 }
 
@@ -171,7 +217,7 @@ public fun new<CompositionShare>(
 /// extension and may be attached before or after publish via `uid_mut`.
 public fun publish<CompositionShare>(
     mut self: Composition<CompositionShare>,
-    _: &CompositionAdminCap<CompositionShare>,
+    cap: &CompositionAdminCap<CompositionShare>,
     clock: &Clock,
 ) {
     match (self.state) {
@@ -179,11 +225,23 @@ public fun publish<CompositionShare>(
             let published_at_ms = clock.timestamp_ms();
             self.state = CompositionState::Published(published_at_ms);
 
-            emit(CompositionPublishedEvent<CompositionShare> {
-                composition_id: object::id(&self),
-            });
+            let composition_id = object::id_address(&self);
+            let composition_admin_cap_id = object::id_address(cap);
+            let clock_id = object::id_address(clock);
+            let title_bytes = self.title.substring(0, self.title.length()).into_bytes();
+            let royalty_rate_bps = self.royalty_rate.value();
 
             transfer::share_object(self);
+
+            emit(CompositionPublishedEvent<CompositionShare> {
+                composition_id,
+                composition_admin_cap_id,
+                clock_id,
+                title_bytes,
+                royalty_rate_bps,
+                published_at_ms,
+                shared_after: true,
+            });
         },
         _ => abort ENotInitializedState,
     }
@@ -273,7 +331,58 @@ public fun new_for_testing<CompositionShare>(
 #[test_only]
 public fun composition_published_event_fields<CompositionShare>(
     event: CompositionPublishedEvent<CompositionShare>,
-): ID {
-    let CompositionPublishedEvent { composition_id } = event;
-    composition_id
+): (address, address, address, vector<u8>, u16, u64, bool) {
+    let CompositionPublishedEvent {
+        composition_id,
+        composition_admin_cap_id,
+        clock_id,
+        title_bytes,
+        royalty_rate_bps,
+        published_at_ms,
+        shared_after,
+    } = event;
+    (
+        composition_id,
+        composition_admin_cap_id,
+        clock_id,
+        title_bytes,
+        royalty_rate_bps,
+        published_at_ms,
+        shared_after,
+    )
+}
+
+/// Unpacks a `CompositionCreatedEvent` for test-side field assertions.
+#[test_only]
+public fun composition_created_event_fields<CompositionShare>(
+    event: CompositionCreatedEvent<CompositionShare>,
+): (address, address, address, address, address, vector<u8>, u16, u64, u64, u64, u8, bool) {
+    let CompositionCreatedEvent {
+        composition_id,
+        composition_admin_cap_id,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        title_bytes,
+        royalty_rate_bps,
+        share_supply_before,
+        share_supply_after,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+    } = event;
+    (
+        composition_id,
+        composition_admin_cap_id,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        title_bytes,
+        royalty_rate_bps,
+        share_supply_before,
+        share_supply_after,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+    )
 }

@@ -24,7 +24,9 @@ use musicos::release::{Self, Release, ReleaseRegistry};
 use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
+use sui::bcs::to_bytes;
 use sui::event;
+use sui::hash::blake2b256;
 use sui::test_scenario;
 
 const SONGWRITER: address = @0xA1;
@@ -35,6 +37,14 @@ const READER: address = @0xBEEF;
 const ROYALTY_RATE_BPS: u16 = 1500;
 const NONCE: u256 = 42;
 
+fun expected_digest(recording_ids: vector<ID>, track_split_bps: vector<u64>, nonce: u256): vector<u8> {
+    let mut bytes = vector<u8>[];
+    bytes.append(to_bytes(&recording_ids));
+    bytes.append(to_bytes(&track_split_bps));
+    bytes.append(to_bytes(&nonce));
+    blake2b256(&bytes)
+}
+
 /// The package initializer creates and shares the only production registry,
 /// with an event whose registry id matches the shared object.
 #[test]
@@ -44,13 +54,14 @@ fun init_creates_shared_registry_and_emits_event() {
 
     let mut events = event::events_by_type<release::ReleaseRegistryCreatedEvent>();
     assert_eq!(events.length(), 1);
-    let (event_registry_id, created_by) =
+    let (event_registry_id, created_by, shared_after) =
         release::release_registry_created_event_fields(events.pop_back());
     assert_eq!(created_by, SONGWRITER);
+    assert!(shared_after);
 
     scenario.next_tx(READER);
     let registry = scenario.take_shared<ReleaseRegistry>();
-    assert_eq!(registry.id(), event_registry_id);
+    assert_eq!(registry.id().to_address(), event_registry_id);
     test_scenario::return_shared(registry);
     scenario.end();
 }
@@ -89,6 +100,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     let comp = scenario.take_shared<Composition<CompositionShare>>();
     let rec = scenario.take_shared<Recording<RecordingShare, CompositionShare>>();
     let registry = scenario.take_shared<ReleaseRegistry>();
+    let composition_id = object::id(&comp);
     let recording_id = object::id(&rec);
     let predicted_release_id = registry.derive_target_release_id(
         vector[recording_id],
@@ -103,6 +115,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     // === Tx 4 (LABEL): assemble and publish the release ===
     scenario.next_tx(LABEL);
     let mut registry = scenario.take_shared<ReleaseRegistry>();
+    let registry_id = registry.id();
     let (rel, rel_cap) = registry.new(
         b"Single".to_string(),
         vector[t],
@@ -110,9 +123,62 @@ fun full_track_release_flow_publishes_at_derived_id() {
     );
     // The claimed UID must equal the prediction the track was bound to.
     assert_eq!(object::id(&rel), predicted_release_id);
+
+    let mut created_events = event::events_by_type<release::ReleaseCreatedEvent>();
+    assert_eq!(created_events.length(), 1);
+    let (
+        event_registry_id,
+        event_release_id,
+        event_cap_id,
+        title_bytes,
+        release_digest,
+        event_nonce,
+        composition_ids,
+        recording_ids,
+        track_split_bps,
+        track_count,
+    ) = release::release_created_event_fields(created_events.pop_back());
+    assert_eq!(event_registry_id, registry_id.to_address());
+    assert_eq!(event_release_id, predicted_release_id.to_address());
+    assert_eq!(event_cap_id, object::id(&rel_cap).to_address());
+    assert_eq!(title_bytes, b"Single");
+    assert_eq!(release_digest, expected_digest(vector[recording_id], vector[10000], NONCE));
+    assert_eq!(event_nonce, NONCE);
+    assert_eq!(composition_ids, vector[composition_id.to_address()]);
+    assert_eq!(recording_ids, vector[recording_id.to_address()]);
+    assert_eq!(track_split_bps, vector[10000]);
+    assert_eq!(track_count, 1);
+
     let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock_id = object::id(&clock).to_address();
     rel.publish(&rel_cap, &clock); // verifies track assignment, shares
     clock.destroy_for_testing();
+
+    let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
+    assert_eq!(published_events.length(), 1);
+    let (
+        event_release_id,
+        event_cap_id,
+        event_clock_id,
+        title_bytes,
+        published_at_ms,
+        composition_ids,
+        recording_ids,
+        track_split_bps,
+        assigned_track_count,
+        shared_after,
+    ) = release::release_published_event_fields(published_events.pop_back());
+    assert_eq!(event_release_id, predicted_release_id.to_address());
+    assert_eq!(event_cap_id, object::id(&rel_cap).to_address());
+    assert_eq!(event_clock_id, clock_id);
+    assert_eq!(title_bytes, b"Single");
+    assert_eq!(published_at_ms, 0);
+    assert_eq!(composition_ids, vector[composition_id.to_address()]);
+    assert_eq!(recording_ids, vector[recording_id.to_address()]);
+    assert_eq!(track_split_bps, vector[10000]);
+    assert_eq!(assigned_track_count, 1);
+    assert!(shared_after);
+
     destroy(rel_cap);
     test_scenario::return_shared(registry);
 

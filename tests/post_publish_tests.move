@@ -33,14 +33,24 @@ fun publish_composition(
     let (comp, cap) =
         composition::new_for_testing<CompositionShare>(b"Song".to_string(), 1500, ctx);
     let comp_id = object::id(&comp);
-    let clock = sui::clock::create_for_testing(ctx);
+    let mut clock = sui::clock::create_for_testing(ctx);
+    sui::clock::set_for_testing(&mut clock, 4242);
+    let clock_id = object::id(&clock).to_address();
     comp.publish(&cap, &clock);
     clock.destroy_for_testing();
 
-    // Event payload: the pure pointer carries exactly the published id.
+    // Event payload captures the final immutable fields and shared-object linkage.
     let mut events = event::events_by_type<CompositionPublishedEvent<CompositionShare>>();
     assert_eq!(events.length(), 1);
-    assert_eq!(composition::composition_published_event_fields(events.pop_back()), comp_id);
+    let (event_comp_id, event_cap_id, event_clock_id, title_bytes, rate_bps, published_at_ms, shared_after) =
+        composition::composition_published_event_fields(events.pop_back());
+    assert_eq!(event_comp_id, comp_id.to_address());
+    assert_eq!(event_cap_id, object::id(&cap).to_address());
+    assert_eq!(event_clock_id, clock_id);
+    assert_eq!(title_bytes, b"Song");
+    assert_eq!(rate_bps, 1500);
+    assert_eq!(published_at_ms, 4242);
+    assert!(shared_after);
 
     cap
 }
@@ -50,19 +60,29 @@ fun publish_recording(
     scenario: &mut test_scenario::Scenario,
 ): recording::RecordingAdminCap<RecordingShare> {
     let ctx = scenario.ctx();
+    let composition_id = test_helpers::fake_id(ctx);
     let (rec, cap) = recording::new_for_testing<RecordingShare, CompositionShare>(
-        test_helpers::fake_id(ctx),
+        composition_id,
         ctx,
     );
     let rec_id = object::id(&rec);
-    let clock = sui::clock::create_for_testing(ctx);
+    let mut clock = sui::clock::create_for_testing(ctx);
+    sui::clock::set_for_testing(&mut clock, 4343);
+    let clock_id = object::id(&clock).to_address();
     rec.publish(&cap, &clock);
     clock.destroy_for_testing();
 
-    // Event payload: the pure pointer carries exactly the published id.
+    // Event payload captures the recording/composition linkage and shared clock.
     let mut events = event::events_by_type<RecordingPublishedEvent<RecordingShare, CompositionShare>>();
     assert_eq!(events.length(), 1);
-    assert_eq!(recording::recording_published_event_fields(events.pop_back()), rec_id);
+    let (event_rec_id, event_comp_id, event_cap_id, event_clock_id, published_at_ms, shared_after) =
+        recording::recording_published_event_fields(events.pop_back());
+    assert_eq!(event_rec_id, rec_id.to_address());
+    assert_eq!(event_comp_id, composition_id.to_address());
+    assert_eq!(event_cap_id, object::id(&cap).to_address());
+    assert_eq!(event_clock_id, clock_id);
+    assert_eq!(published_at_ms, 4343);
+    assert!(shared_after);
 
     cap
 }
@@ -75,28 +95,42 @@ fun publish_titled_release(
     title: vector<u8>,
 ): (release::ReleaseAdminCap, ID) {
     let ctx = scenario.ctx();
+    let composition_id = test_helpers::fake_id(ctx);
+    let recording_id = test_helpers::fake_id(ctx);
     let (rel, cap) = release::new_for_testing(
         title.to_string(),
         vector[musicos::track::new_for_testing(
-            test_helpers::fake_id(ctx),
-            test_helpers::fake_id(ctx),
+            composition_id,
+            recording_id,
             test_helpers::fake_id(ctx),
             10000,
         )],
         ctx,
     );
     let rel_id = object::id(&rel);
-    let clock = sui::clock::create_for_testing(ctx);
+    let mut clock = sui::clock::create_for_testing(ctx);
+    sui::clock::set_for_testing(&mut clock, 4444);
+    let clock_id = object::id(&clock).to_address();
     rel.publish(&cap, &clock);
     clock.destroy_for_testing();
 
-    // Event payload: the pure pointer carries exactly the published id of
-    // *this* publish call. Popping the most recent event is safe even when a
-    // test publishes more than one release, since each publish appends
-    // exactly one event and this call's is always the last appended.
+    // Popping the most recent event is safe even when a test publishes more
+    // than one release, since each publish appends exactly one event.
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
-    assert_eq!(release::release_published_event_fields(events.pop_back()), rel_id);
+    let (event_rel_id, event_cap_id, event_clock_id, title_bytes, published_at_ms,
+        composition_ids, recording_ids, track_split_bps, assigned_track_count, shared_after) =
+        release::release_published_event_fields(events.pop_back());
+    assert_eq!(event_rel_id, rel_id.to_address());
+    assert_eq!(event_cap_id, object::id(&cap).to_address());
+    assert_eq!(event_clock_id, clock_id);
+    assert_eq!(title_bytes, title);
+    assert_eq!(published_at_ms, 4444);
+    assert_eq!(composition_ids, vector[composition_id.to_address()]);
+    assert_eq!(recording_ids, vector[recording_id.to_address()]);
+    assert_eq!(track_split_bps, vector[10000]);
+    assert_eq!(assigned_track_count, 1);
+    assert!(shared_after);
 
     (cap, rel_id)
 }

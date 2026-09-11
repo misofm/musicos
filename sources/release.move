@@ -168,28 +168,41 @@ public enum ReleaseState has copy, drop, store {
 
 // === Events ===
 
-/// Emitted once when a release is published. A pure pointer: it carries the
-/// release's identity. A release's embedded fields (discs, tracks) are
-/// immutable after publishing, so an indexer treats this as a signal to
-/// fetch the full object by `release_id`; all indexed data — including the
-/// publish timestamp — lives in the object itself. Dynamic fields (e.g.
-/// credits attached by the credits extension) may still be attached afterward.
-///
-/// There is deliberately no `ReleaseCreatedEvent`: an `Initialized` release
-/// exists only inside its creating transaction (create-and-publish is atomic),
-/// so publish is the one lifecycle moment an observer can ever see. Pre-publish
-/// correlation, where an integrator needs it, is an offer extension's
-/// responsibility — core's one observable lifecycle moment remains publish.
+/// Emitted once when a release is created.
+public struct ReleaseCreatedEvent has copy, drop {
+    registry_id: address,
+    release_id: address,
+    release_admin_cap_id: address,
+    title_bytes: vector<u8>,
+    release_digest: vector<u8>,
+    nonce: u256,
+    composition_ids: vector<address>,
+    recording_ids: vector<address>,
+    track_split_bps: vector<u64>,
+    track_count: u64,
+}
+
+/// Emitted once when a release is published.
 public struct ReleasePublishedEvent has copy, drop {
-    release_id: ID,
+    release_id: address,
+    release_admin_cap_id: address,
+    clock_id: address,
+    title_bytes: vector<u8>,
+    published_at_ms: u64,
+    composition_ids: vector<address>,
+    recording_ids: vector<address>,
+    track_split_bps: vector<u64>,
+    assigned_track_count: u64,
+    shared_after: bool,
 }
 
 /// Emitted once when package initialization creates the canonical shared
 /// `ReleaseRegistry`, allowing clients and indexers to discover its id from
 /// the publish transaction effects.
 public struct ReleaseRegistryCreatedEvent has copy, drop {
-    registry_id: ID,
+    registry_id: address,
     created_by: address,
+    shared_after: bool,
 }
 
 // === Method Aliases ===
@@ -204,13 +217,16 @@ public use fun release_registry_id as ReleaseRegistry.id;
 /// permanent parent namespace every production release commits to.
 fun init(ctx: &mut TxContext) {
     let registry = ReleaseRegistry { id: object::new(ctx) };
-
-    emit(ReleaseRegistryCreatedEvent {
-        registry_id: registry.id(),
-        created_by: ctx.sender(),
-    });
+    let registry_id = object::id_address(&registry);
+    let created_by = ctx.sender();
 
     transfer::share_object(registry);
+
+    emit(ReleaseRegistryCreatedEvent {
+        registry_id,
+        created_by,
+        shared_after: true,
+    });
 }
 
 /// Assembles a release under the canonical registry namespace. This is
@@ -233,6 +249,8 @@ public fun new(
     assert!(split_sum == (bps::denominator!() as u64), EInvalidTrackSplitsSum);
 
     let release_digest = calculate_release_digest(recording_ids, track_split_values, nonce);
+    let event_release_digest = release_digest;
+    let title_bytes = title.substring(0, title.length()).into_bytes();
     let release_uid = claim(&mut self.id, ReleaseKey(release_digest));
     let mut release = Release {
         id: release_uid,
@@ -245,6 +263,23 @@ public fun new(
         id: claim(&mut release.id, ReleaseAdminCapKey()),
         release_id: object::id(&release),
     };
+
+    let composition_ids = release.tracks.map_ref!(|track| track.composition_id().to_address());
+    let recording_ids = release.tracks.map_ref!(|track| track.recording_id().to_address());
+    let track_split_bps = release.tracks.map_ref!(|track| track.split_bps().value() as u64);
+
+    emit(ReleaseCreatedEvent {
+        registry_id: object::id_address(self),
+        release_id: object::id_address(&release),
+        release_admin_cap_id: object::id_address(&release_admin_cap),
+        title_bytes,
+        release_digest: event_release_digest,
+        nonce,
+        composition_ids,
+        recording_ids,
+        track_split_bps,
+        track_count: release.tracks.length(),
+    });
 
     (release, release_admin_cap)
 }
@@ -289,11 +324,29 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
             // Update the release state to published.
             self.state = ReleaseState::Published(timestamp_ms);
 
-            emit(ReleasePublishedEvent {
-                release_id: object::id(&self),
-            });
+            let release_id = object::id_address(&self);
+            let release_admin_cap_id = object::id_address(cap);
+            let clock_id = object::id_address(clock);
+            let title_bytes = self.title.substring(0, self.title.length()).into_bytes();
+            let composition_ids = self.tracks.map_ref!(|track| track.composition_id().to_address());
+            let recording_ids = self.tracks.map_ref!(|track| track.recording_id().to_address());
+            let track_split_bps = self.tracks.map_ref!(|track| track.split_bps().value() as u64);
+            let assigned_track_count = self.tracks.length();
 
             transfer::share_object(self);
+
+            emit(ReleasePublishedEvent {
+                release_id,
+                release_admin_cap_id,
+                clock_id,
+                title_bytes,
+                published_at_ms: timestamp_ms,
+                composition_ids,
+                recording_ids,
+                track_split_bps,
+                assigned_track_count,
+                shared_after: true,
+            });
         },
         _ => abort ENotInitializedState,
     }
@@ -390,12 +443,44 @@ public fun new_registry_for_testing(ctx: &mut TxContext): ReleaseRegistry {
 #[test_only]
 public fun release_registry_created_event_fields(
     event: ReleaseRegistryCreatedEvent,
-): (ID, address) {
+): (address, address, bool) {
     let ReleaseRegistryCreatedEvent {
         registry_id,
         created_by,
+        shared_after,
     } = event;
-    (registry_id, created_by)
+    (registry_id, created_by, shared_after)
+}
+
+/// Unpacks a `ReleaseCreatedEvent` for test-side field assertions.
+#[test_only]
+public fun release_created_event_fields(
+    event: ReleaseCreatedEvent,
+): (address, address, address, vector<u8>, vector<u8>, u256, vector<address>, vector<address>, vector<u64>, u64) {
+    let ReleaseCreatedEvent {
+        registry_id,
+        release_id,
+        release_admin_cap_id,
+        title_bytes,
+        release_digest,
+        nonce,
+        composition_ids,
+        recording_ids,
+        track_split_bps,
+        track_count,
+    } = event;
+    (
+        registry_id,
+        release_id,
+        release_admin_cap_id,
+        title_bytes,
+        release_digest,
+        nonce,
+        composition_ids,
+        recording_ids,
+        track_split_bps,
+        track_count,
+    )
 }
 
 // The state predicates are test-only: create-and-publish is atomic (see the
@@ -407,9 +492,33 @@ public fun release_registry_created_event_fields(
 /// event's field is module-private, so tests in another module need this
 /// accessor to assert the full payload rather than just "an event fired".
 #[test_only]
-public fun release_published_event_fields(event: ReleasePublishedEvent): ID {
-    let ReleasePublishedEvent { release_id } = event;
-    release_id
+public fun release_published_event_fields(
+    event: ReleasePublishedEvent,
+): (address, address, address, vector<u8>, u64, vector<address>, vector<address>, vector<u64>, u64, bool) {
+    let ReleasePublishedEvent {
+        release_id,
+        release_admin_cap_id,
+        clock_id,
+        title_bytes,
+        published_at_ms,
+        composition_ids,
+        recording_ids,
+        track_split_bps,
+        assigned_track_count,
+        shared_after,
+    } = event;
+    (
+        release_id,
+        release_admin_cap_id,
+        clock_id,
+        title_bytes,
+        published_at_ms,
+        composition_ids,
+        recording_ids,
+        track_split_bps,
+        assigned_track_count,
+        shared_after,
+    )
 }
 
 #[test_only]

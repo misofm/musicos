@@ -128,26 +128,36 @@ public enum RecordingState has copy, drop, store {
 
 // === Events ===
 
-/// Emitted once when a recording is published. A pure pointer: it carries the
-/// recording's identity, with the parent composition encoded as the
-/// `CompositionShare` phantom. A recording's embedded fields are immutable after
-/// publishing, so an indexer treats this as a signal to fetch the full object by
-/// `recording_id`; all indexed data — including the publish timestamp — lives in
-/// the object itself. Dynamic fields (e.g. masters attached by ingesters,
-/// credits attached by the credits extension) may still change afterward.
-public struct RecordingPublishedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
-    recording_id: ID,
+/// Emitted once when a recording is created.
+public struct RecordingCreatedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
+    recording_id: address,
+    composition_id: address,
+    recording_admin_cap_id: address,
+    share_currency_id: address,
+    consumed_treasury_cap_id: address,
+    created_by: address,
+    composition_royalty_rate_bps: u16,
+    share_supply_before: u64,
+    shares_before_grant: u64,
+    composition_shares_granted: u64,
+    shares_returned: u64,
+    share_decimals: u8,
+    share_supply_fixed_after: bool,
+    composition_funds_sent: bool,
 }
 
-/// Emitted when a recording grants the composition its royalty-rate worth of
-/// recording shares at creation. The composition's cut is settled as cap-table
-/// ownership — `send_funds`ed to the composition's address — so its claim on
-/// recording revenue is enforced by share ownership, not by any revenue
-/// distributor choosing to honor a rate. The rate is not stored on the
-/// recording: this event (in the creation transaction's effects) is its
-/// canonical record. What the composition owner then does with the shares
-/// (hold, stake, sell) is outside the protocol's scope. Both parties are
-/// identified by both object IDs and the event's phantom type parameters.
+/// Emitted once when a recording is published.
+public struct RecordingPublishedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
+    recording_id: address,
+    composition_id: address,
+    recording_admin_cap_id: address,
+    clock_id: address,
+    published_at_ms: u64,
+    shared_after: bool,
+}
+
+/// Legacy event type retained for ABI compatibility. New recordings emit
+/// `RecordingCreatedEvent` instead; this type is intentionally dormant.
 public struct CompositionSharesGrantedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
     recording_id: ID,
     composition_id: ID,
@@ -192,7 +202,7 @@ public struct CompositionSharesGrantedEvent<phantom RecordingShare, phantom Comp
 public fun new<RecordingShare, CompositionShare>(
     composition: &Composition<CompositionShare>,
     share_currency: &mut Currency<RecordingShare>,
-    share_treasury_cap: TreasuryCap<RecordingShare>,
+    mut share_treasury_cap: TreasuryCap<RecordingShare>,
     ctx: &mut TxContext,
 ): (
     Recording<RecordingShare, CompositionShare>,
@@ -200,7 +210,13 @@ public fun new<RecordingShare, CompositionShare>(
     Balance<RecordingShare>,
 ) {
     let composition_id = object::id(composition);
+    let composition_id_address = composition_id.to_address();
     let composition_royalty_rate = composition.royalty_rate();
+    let share_currency_id = object::id_address(share_currency);
+    let consumed_treasury_cap_id = object::id_address(&share_treasury_cap);
+    let share_decimals = share_currency.decimals();
+    let share_supply_before = share_treasury_cap.supply().value();
+    let created_by = ctx.sender();
 
     // A recording is its own freshly-created object, not a derived child of its
     // composition. The composition is read-only (`&Composition`) — taken only to
@@ -222,6 +238,7 @@ public fun new<RecordingShare, CompositionShare>(
         share_currency,
         share_treasury_cap,
     );
+    let shares_before_grant = recording_shares.value();
 
     // Settle the composition's royalty rate as ownership rather than as a
     // distribution-time routing parameter: split the rate's worth of recording
@@ -233,20 +250,31 @@ public fun new<RecordingShare, CompositionShare>(
     //
     // A 0% rate (e.g. a generative recording with no authored composition) yields
     // no cut: skip the split/send so we don't open a zero-value share accumulator
-    // for the composition. The grant event is still emitted as the canonical
-    // record that the applied rate was zero.
+    // for the composition. The creation event still records that the applied
+    // rate was zero.
     let composition_cut = composition_royalty_rate.apply(recording_shares.value());
+    let mut composition_funds_sent = false;
     if (composition_cut > 0) {
         let composition_shares = recording_shares.split(composition_cut);
         composition_shares.send_funds(composition_id.to_address());
+        composition_funds_sent = true;
     };
 
-    emit(CompositionSharesGrantedEvent<RecordingShare, CompositionShare> {
-        recording_id: object::id(&recording),
-        composition_id,
-        value: composition_cut,
-        rate_bps: composition_royalty_rate.value(),
-        granted_by: ctx.sender(),
+    emit(RecordingCreatedEvent<RecordingShare, CompositionShare> {
+        recording_id: object::id_address(&recording),
+        composition_id: composition_id_address,
+        recording_admin_cap_id: object::id_address(&recording_admin_cap),
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        composition_royalty_rate_bps: composition_royalty_rate.value(),
+        share_supply_before,
+        shares_before_grant,
+        composition_shares_granted: composition_cut,
+        shares_returned: recording_shares.value(),
+        share_decimals,
+        share_supply_fixed_after: share_currency.is_supply_fixed(),
+        composition_funds_sent,
     });
 
     (recording, recording_admin_cap, recording_shares)
@@ -259,7 +287,7 @@ public fun new<RecordingShare, CompositionShare>(
 /// extension and may be attached before or after publish via `uid_mut`.
 public fun publish<RecordingShare, CompositionShare>(
     mut self: Recording<RecordingShare, CompositionShare>,
-    _: &RecordingAdminCap<RecordingShare>,
+    cap: &RecordingAdminCap<RecordingShare>,
     clock: &Clock,
 ) {
     match (self.state) {
@@ -268,11 +296,21 @@ public fun publish<RecordingShare, CompositionShare>(
             let published_at_ms = clock.timestamp_ms();
             self.state = RecordingState::Published(published_at_ms);
 
-            emit(RecordingPublishedEvent<RecordingShare, CompositionShare> {
-                recording_id: object::id(&self),
-            });
+            let recording_id = object::id_address(&self);
+            let composition_id = self.composition_id.to_address();
+            let recording_admin_cap_id = object::id_address(cap);
+            let clock_id = object::id_address(clock);
 
             transfer::share_object(self);
+
+            emit(RecordingPublishedEvent<RecordingShare, CompositionShare> {
+                recording_id,
+                composition_id,
+                recording_admin_cap_id,
+                clock_id,
+                published_at_ms,
+                shared_after: true,
+            });
         },
         _ => abort ENotInitializedState,
     };
@@ -364,13 +402,66 @@ public fun composition_shares_granted_event_fields<RecordingShare, CompositionSh
     (recording_id, composition_id, value, rate_bps, granted_by)
 }
 
+/// Unpacks a `RecordingCreatedEvent` for test-side field assertions.
+#[test_only]
+public fun recording_created_event_fields<RecordingShare, CompositionShare>(
+    event: RecordingCreatedEvent<RecordingShare, CompositionShare>,
+): (address, address, address, address, address, address, u16, u64, u64, u64, u64, u8, bool, bool) {
+    let RecordingCreatedEvent {
+        recording_id,
+        composition_id,
+        recording_admin_cap_id,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        composition_royalty_rate_bps,
+        share_supply_before,
+        shares_before_grant,
+        composition_shares_granted,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+        composition_funds_sent,
+    } = event;
+    (
+        recording_id,
+        composition_id,
+        recording_admin_cap_id,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        composition_royalty_rate_bps,
+        share_supply_before,
+        shares_before_grant,
+        composition_shares_granted,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+        composition_funds_sent,
+    )
+}
+
 /// Unpacks a `RecordingPublishedEvent` for test-side field assertions — the
 /// event's field is module-private, so tests in another module need this
 /// accessor to assert the full payload rather than just "an event fired".
 #[test_only]
 public fun recording_published_event_fields<RecordingShare, CompositionShare>(
     event: RecordingPublishedEvent<RecordingShare, CompositionShare>,
-): ID {
-    let RecordingPublishedEvent { recording_id } = event;
-    recording_id
+): (address, address, address, address, u64, bool) {
+    let RecordingPublishedEvent {
+        recording_id,
+        composition_id,
+        recording_admin_cap_id,
+        clock_id,
+        published_at_ms,
+        shared_after,
+    } = event;
+    (
+        recording_id,
+        composition_id,
+        recording_admin_cap_id,
+        clock_id,
+        published_at_ms,
+        shared_after,
+    )
 }

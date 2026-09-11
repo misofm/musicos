@@ -11,7 +11,8 @@ module musicos::kitchen_sink_tests;
 use musicos::release;
 use musicos::test_helpers;
 use musicos::track;
-use std::unit_test::destroy;
+use std::unit_test::{assert_eq, destroy};
+use sui::event;
 
 // === Tests ===
 
@@ -54,4 +55,100 @@ fun test_release_kitchen_sink() {
     // Cleanup
     clock.destroy_for_testing();
     destroy(rel_cap);
+}
+
+/// The production constructor preserves all 255 track positions in both rich
+/// release events, including duplicate recording IDs and zero-valued splits.
+#[test]
+fun test_release_rich_event_arrays_at_max_tracks() {
+    let ctx = &mut tx_context::dummy();
+    let mut registry = release::new_registry_for_testing(ctx);
+    let base_recording_ids = vector::tabulate!(255, |_| test_helpers::fake_id(ctx));
+    let base_composition_ids = vector::tabulate!(255, |_| test_helpers::fake_id(ctx));
+    let recording_ids = vector::tabulate!(255, |index| {
+        if (index == 254) base_recording_ids[0] else base_recording_ids[index]
+    });
+    let composition_ids = vector::tabulate!(255, |index| {
+        if (index == 254) base_composition_ids[0] else base_composition_ids[index]
+    });
+    let track_split_bps = vector::tabulate!(255, |index| {
+        if (index == 0) 0 else if (index == 254) 79 else if (index < 55) 40 else 39
+    });
+
+    let nonce = 7u256;
+    let predicted_release_id = registry.derive_target_release_id(
+        recording_ids,
+        track_split_bps,
+        nonce,
+    );
+    let tracks = vector::tabulate!(255, |index| track::new_for_testing(
+        composition_ids[index],
+        recording_ids[index],
+        predicted_release_id,
+        track_split_bps[index] as u16,
+    ));
+    let (rel, rel_cap) = registry.new(
+        b"Max Rich Release".to_string(),
+        tracks,
+        nonce,
+    );
+
+    let mut created_events = event::events_by_type<release::ReleaseCreatedEvent>();
+    assert_eq!(created_events.length(), 1);
+    let (
+        _registry_id,
+        event_release_id,
+        _cap_id,
+        _title,
+        _digest,
+        event_nonce,
+        event_composition_ids,
+        event_recording_ids,
+        event_splits,
+        track_count,
+    ) = release::release_created_event_fields(created_events.pop_back());
+    assert_eq!(event_release_id, predicted_release_id.to_address());
+    assert_eq!(event_nonce, nonce);
+    assert_eq!(track_count, 255);
+    assert_eq!(event_composition_ids.length(), 255);
+    assert_eq!(event_recording_ids.length(), 255);
+    assert_eq!(event_splits.length(), 255);
+    assert_eq!(event_composition_ids[0], composition_ids[0].to_address());
+    assert_eq!(event_composition_ids[254], composition_ids[254].to_address());
+    assert_eq!(event_recording_ids[0], recording_ids[0].to_address());
+    assert_eq!(event_recording_ids[254], recording_ids[254].to_address());
+    assert_eq!(event_splits[0], 0);
+    assert_eq!(event_splits[1], 40);
+    assert_eq!(event_splits[254], 79);
+
+    let clock = sui::clock::create_for_testing(ctx);
+    rel.publish(&rel_cap, &clock);
+    clock.destroy_for_testing();
+    destroy(rel_cap);
+    let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
+    assert_eq!(published_events.length(), 1);
+    let (
+        event_release_id,
+        _cap_id,
+        _clock_id,
+        _title,
+        _published_at,
+        event_composition_ids,
+        event_recording_ids,
+        event_splits,
+        assigned_track_count,
+        shared_after,
+    ) = release::release_published_event_fields(published_events.pop_back());
+    assert_eq!(event_release_id, predicted_release_id.to_address());
+    assert_eq!(event_composition_ids.length(), 255);
+    assert_eq!(event_recording_ids.length(), 255);
+    assert_eq!(event_splits.length(), 255);
+    assert_eq!(assigned_track_count, 255);
+    assert!(shared_after);
+    assert_eq!(event_composition_ids[0], composition_ids[0].to_address());
+    assert_eq!(event_recording_ids[254], recording_ids[254].to_address());
+    assert_eq!(event_splits[0], 0);
+    assert_eq!(event_splits[254], 79);
+
+    destroy(registry);
 }

@@ -28,6 +28,8 @@ const SHARE_SUPPLY: u64 = 10_000_000_000_000;
 fun composition_new_initializes_fixed_share_supply() {
     let ctx = &mut tx_context::dummy();
     let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
+    let currency_id = object::id(&currency).to_address();
+    let treasury_cap_id = object::id(&treasury_cap).to_address();
 
     let (comp, cap, shares) = composition::new<Share>(
         b"Production Song".to_string(),
@@ -43,6 +45,35 @@ fun composition_new_initializes_fixed_share_supply() {
     assert_eq!(comp.royalty_rate().value(), 1500);
     assert!(comp.is_initialized_state());
     assert!(!comp.is_published_state());
+
+    let mut events = sui::event::events_by_type<composition::CompositionCreatedEvent<Share>>();
+    assert_eq!(events.length(), 1);
+    let (
+        event_comp_id,
+        event_cap_id,
+        event_currency_id,
+        event_treasury_cap_id,
+        created_by,
+        title_bytes,
+        rate_bps,
+        supply_before,
+        supply_after,
+        shares_returned,
+        decimals,
+        fixed_after,
+    ) = composition::composition_created_event_fields(events.pop_back());
+    assert_eq!(event_comp_id, object::id(&comp).to_address());
+    assert_eq!(event_cap_id, object::id(&cap).to_address());
+    assert_eq!(event_currency_id, currency_id);
+    assert_eq!(event_treasury_cap_id, treasury_cap_id);
+    assert_eq!(created_by, ctx.sender());
+    assert_eq!(title_bytes, b"Production Song");
+    assert_eq!(rate_bps, 1500);
+    assert_eq!(supply_before, 0);
+    assert_eq!(supply_after, SHARE_SUPPLY);
+    assert_eq!(shares_returned, SHARE_SUPPLY);
+    assert_eq!(decimals, 6);
+    assert!(fixed_after);
 
     destroy(comp);
     destroy(cap);
@@ -75,6 +106,8 @@ fun recording_new_settles_composition_cut() {
     let (comp, comp_cap) =
         composition::new_for_testing<CompositionShare>(b"Song".to_string(), 1500, ctx);
     let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
+    let currency_id = object::id(&currency).to_address();
+    let treasury_cap_id = object::id(&treasury_cap).to_address();
 
     let (rec, rec_cap, shares) = recording::new<Share, CompositionShare>(
         &comp,
@@ -92,16 +125,39 @@ fun recording_new_settles_composition_cut() {
     assert!(!rec.is_published_state());
 
     let mut events = sui::event::events_by_type<
-        recording::CompositionSharesGrantedEvent<Share, CompositionShare>,
+        recording::RecordingCreatedEvent<Share, CompositionShare>,
     >();
     assert_eq!(events.length(), 1);
-    let (recording_id, composition_id, value, rate_bps, granted_by) =
-        recording::composition_shares_granted_event_fields(events.pop_back());
-    assert_eq!(recording_id, object::id(&rec));
-    assert_eq!(composition_id, object::id(&comp));
-    assert_eq!(value, 1_500_000_000_000);
+    let (
+        recording_id,
+        composition_id,
+        recording_cap_id,
+        event_currency_id,
+        event_treasury_cap_id,
+        created_by,
+        rate_bps,
+        supply_before,
+        shares_before_grant,
+        composition_shares_granted,
+        shares_returned,
+        decimals,
+        fixed_after,
+        funds_sent,
+    ) = recording::recording_created_event_fields(events.pop_back());
+    assert_eq!(recording_id, object::id(&rec).to_address());
+    assert_eq!(composition_id, object::id(&comp).to_address());
+    assert_eq!(recording_cap_id, object::id(&rec_cap).to_address());
+    assert_eq!(event_currency_id, currency_id);
+    assert_eq!(event_treasury_cap_id, treasury_cap_id);
+    assert_eq!(created_by, ctx.sender());
     assert_eq!(rate_bps, 1500);
-    assert_eq!(granted_by, ctx.sender());
+    assert_eq!(supply_before, 0);
+    assert_eq!(shares_before_grant, SHARE_SUPPLY);
+    assert_eq!(composition_shares_granted, 1_500_000_000_000);
+    assert_eq!(shares_returned, SHARE_SUPPLY - 1_500_000_000_000);
+    assert_eq!(decimals, 6);
+    assert!(fixed_after);
+    assert!(funds_sent);
 
     destroy(comp);
     destroy(comp_cap);
@@ -128,6 +184,56 @@ fun recording_new_zero_rate_grants_no_shares() {
     // A 0% composition royalty grants the composition no recording shares: the
     // split/send is skipped, so the creator retains the entire supply.
     assert_eq!(shares.value(), SHARE_SUPPLY);
+
+    let mut events = sui::event::events_by_type<
+        recording::RecordingCreatedEvent<Share, CompositionShare>,
+    >();
+    assert_eq!(events.length(), 1);
+    let (_, _, _, _, _, _, rate_bps, _, shares_before_grant, granted, returned, decimals, fixed, sent) =
+        recording::recording_created_event_fields(events.pop_back());
+    assert_eq!(rate_bps, 0);
+    assert_eq!(shares_before_grant, SHARE_SUPPLY);
+    assert_eq!(granted, 0);
+    assert_eq!(returned, SHARE_SUPPLY);
+    assert_eq!(decimals, 6);
+    assert!(fixed);
+    assert!(!sent);
+
+    destroy(comp);
+    destroy(comp_cap);
+    destroy(rec);
+    destroy(rec_cap);
+    destroy(shares);
+    destroy(currency);
+}
+
+#[test]
+fun recording_new_full_rate_grants_full_supply() {
+    let ctx = &mut tx_context::dummy();
+    let (comp, comp_cap) =
+        composition::new_for_testing<CompositionShare>(b"Full Royalty".to_string(), 10000, ctx);
+    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
+
+    let (rec, rec_cap, shares) = recording::new<Share, CompositionShare>(
+        &comp,
+        &mut currency,
+        treasury_cap,
+        ctx,
+    );
+    assert_eq!(shares.value(), 0);
+
+    let mut events = sui::event::events_by_type<
+        recording::RecordingCreatedEvent<Share, CompositionShare>,
+    >();
+    assert_eq!(events.length(), 1);
+    let (_, _, _, _, _, _, rate_bps, _, before_grant, granted, returned, _, fixed, sent) =
+        recording::recording_created_event_fields(events.pop_back());
+    assert_eq!(rate_bps, 10000);
+    assert_eq!(before_grant, SHARE_SUPPLY);
+    assert_eq!(granted, SHARE_SUPPLY);
+    assert_eq!(returned, 0);
+    assert!(fixed);
+    assert!(sent);
 
     destroy(comp);
     destroy(comp_cap);
@@ -186,6 +292,16 @@ fun recording_new_independent_ids_succeed() {
 
     assert!(object::id(&rec0) != object::id(&rec1));
 
+    let mut events = sui::event::events_by_type<
+        recording::RecordingCreatedEvent<Share, CompositionShare>,
+    >();
+    assert_eq!(events.length(), 2);
+    let (last_id, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+        recording::recording_created_event_fields(events.pop_back());
+    let (first_id, _, _, _, _, _, _, _, _, _, _, _, _, _) =
+        recording::recording_created_event_fields(events.pop_back());
+    assert!(last_id != first_id);
+
     destroy(comp);
     destroy(comp_cap);
     destroy(rec0);
@@ -235,4 +351,3 @@ fun composition_new_title_too_long_aborts() {
     destroy(shares);
     destroy(currency);
 }
-
