@@ -55,11 +55,11 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.musicos]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "B570E2104B35C19F25B955D3C87C48FE00C559F83B11F558F680DBBAF50EEB73"
+manifest_digest = "73602DE43CA787C75C08F7B2927677BB172C067E18DDB83C7FAA4E7F38E9AAAF"
 deps = { bps = "bps", share = "share", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.share]
-source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "3fd8e0ce2803c12d41e04db23a7f79e51982298e" }
+source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "e635fa7a85fdfb433e105e9e0460263fdbec54ad" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
