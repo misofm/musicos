@@ -163,18 +163,6 @@ public struct RecordingPublishedEvent<phantom RecordingShare, phantom Compositio
     created_admin_cap_id: address,
 }
 
-/// Legacy event type retained for ABI compatibility. This type is intentionally
-/// dormant; recording creation is reported by the later Published event.
-public struct CompositionSharesGrantedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
-    recording_id: ID,
-    composition_id: ID,
-    /// Recording-share base units granted to the composition.
-    value: u64,
-    /// The composition royalty rate applied at creation, in basis points.
-    rate_bps: u16,
-    granted_by: address,
-}
-
 // === Public Functions ===
 
 /// Creates a new recording for a composition.
@@ -446,20 +434,6 @@ public fun new_for_testing<RecordingShare, CompositionShare>(
     };
 
     (recording, recording_admin_cap)
-}
-
-#[test_only]
-public fun composition_shares_granted_event_fields<RecordingShare, CompositionShare>(
-    event: CompositionSharesGrantedEvent<RecordingShare, CompositionShare>,
-): (ID, ID, u64, u16, address) {
-    let CompositionSharesGrantedEvent {
-        recording_id,
-        composition_id,
-        value,
-        rate_bps,
-        granted_by,
-    } = event;
-    (recording_id, composition_id, value, rate_bps, granted_by)
 }
 
 /// Unpacks a `RecordingPublishedEvent` for test-side field assertions — the
