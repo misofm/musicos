@@ -128,6 +128,7 @@ fun test_release_rich_event_arrays_at_max_tracks() {
     assert_eq!(event_recording_ids[0], recording_ids[0].to_address());
     assert_eq!(event_recording_ids[254], recording_ids[254].to_address());
     assert_eq!(event_splits[0], 0);
+    assert_eq!(event_splits[1], 40);
     assert_eq!(event_splits[254], 79);
 
     destroy(registry);
