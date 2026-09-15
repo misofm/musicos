@@ -7,6 +7,12 @@
 `4999b7d6` (audited at exactly this rev; see `share/AUDIT.md`). Re-pinned from
 `047d74d5` on 2026-08-23 per I2 — resolved.
 
+> **Current pins (2026-09-15):** `share` is now `780bf701` (share#2:
+> `assert_valid_share_type` replaced by `is_share`; `initialize` checks and
+> abort codes unchanged; independent regression review in share#2). Reviewed in
+> the pre-launch audit, misofm/audit#1. This document records the 2026-08-23
+> audit at the revisions above.
+
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
 their admin capabilities, and the extension authorization contract that all
 `musicos-extensions/*` packages build on. Verdict: **safe to publish — no
