@@ -100,7 +100,6 @@ fun full_track_release_flow_publishes_at_derived_id() {
     let comp = scenario.take_shared<Composition<CompositionShare>>();
     let rec = scenario.take_shared<Recording<RecordingShare, CompositionShare>>();
     let registry = scenario.take_shared<ReleaseRegistry>();
-    let composition_id = object::id(&comp);
     let recording_id = object::id(&rec);
     let predicted_release_id = registry.derive_target_release_id(
         vector[recording_id],
@@ -138,9 +137,6 @@ fun full_track_release_flow_publishes_at_derived_id() {
         event_clock_id,
         title_bytes,
         published_at_ms,
-        composition_ids,
-        recording_ids,
-        track_split_bps,
         assigned_track_count,
         shared_after,
         event_registry_id,
@@ -152,9 +148,6 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(event_clock_id, clock_id);
     assert_eq!(title_bytes, b"Single");
     assert_eq!(published_at_ms, 0);
-    assert_eq!(composition_ids, vector[composition_id.to_address()]);
-    assert_eq!(recording_ids, vector[recording_id.to_address()]);
-    assert_eq!(track_split_bps, vector[10000]);
     assert_eq!(assigned_track_count, 1);
     assert!(shared_after);
     assert_eq!(event_registry_id, registry_id.to_address());

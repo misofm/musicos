@@ -185,7 +185,7 @@ fun publish_titled_release(
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
     let (event_rel_id, event_cap_id, event_clock_id, title_bytes, published_at_ms,
-        composition_ids, recording_ids, track_split_bps, assigned_track_count, shared_after,
+        assigned_track_count, shared_after,
         registry_id, release_digest, nonce) =
         release::release_published_event_fields(events.pop_back());
     assert_eq!(event_rel_id, rel_id.to_address());
@@ -193,9 +193,6 @@ fun publish_titled_release(
     assert_eq!(event_clock_id, clock_id);
     assert_eq!(title_bytes, title);
     assert_eq!(published_at_ms, 4444);
-    assert_eq!(composition_ids, vector[composition_id.to_address()]);
-    assert_eq!(recording_ids, vector[recording_id.to_address()]);
-    assert_eq!(track_split_bps, vector[10000]);
     assert_eq!(assigned_track_count, 1);
     assert!(shared_after);
     assert_eq!(registry_id, @0x0);

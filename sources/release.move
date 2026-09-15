@@ -179,9 +179,6 @@ public struct ReleasePublishedEvent has copy, drop {
     clock_id: address,
     title_bytes: vector<u8>,
     published_at_ms: u64,
-    composition_ids: vector<address>,
-    recording_ids: vector<address>,
-    track_split_bps: vector<u64>,
     assigned_track_count: u64,
     shared_after: bool,
     registry_id: address,
@@ -310,9 +307,6 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
             let release_admin_cap_id = object::id_address(cap);
             let clock_id = object::id_address(clock);
             let title_bytes = self.title.substring(0, self.title.length()).into_bytes();
-            let composition_ids = self.tracks.map_ref!(|track| track.composition_id().to_address());
-            let recording_ids = self.tracks.map_ref!(|track| track.recording_id().to_address());
-            let track_split_bps = self.tracks.map_ref!(|track| track.split_bps().value() as u64);
             let assigned_track_count = self.tracks.length();
 
             transfer::share_object(self);
@@ -323,9 +317,6 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
                 clock_id,
                 title_bytes,
                 published_at_ms: timestamp_ms,
-                composition_ids,
-                recording_ids,
-                track_split_bps,
                 assigned_track_count,
                 shared_after: true,
                 registry_id,
@@ -448,16 +439,13 @@ public fun release_registry_created_event_fields(
 #[test_only]
 public fun release_published_event_fields(
     event: ReleasePublishedEvent,
-): (address, address, address, vector<u8>, u64, vector<address>, vector<address>, vector<u64>, u64, bool, address, vector<u8>, u256) {
+): (address, address, address, vector<u8>, u64, u64, bool, address, vector<u8>, u256) {
     let ReleasePublishedEvent {
         release_id,
         release_admin_cap_id,
         clock_id,
         title_bytes,
         published_at_ms,
-        composition_ids,
-        recording_ids,
-        track_split_bps,
         assigned_track_count,
         shared_after,
         registry_id,
@@ -470,9 +458,6 @@ public fun release_published_event_fields(
         clock_id,
         title_bytes,
         published_at_ms,
-        composition_ids,
-        recording_ids,
-        track_split_bps,
         assigned_track_count,
         shared_after,
         registry_id,
