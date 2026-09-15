@@ -57,8 +57,8 @@ fun test_release_kitchen_sink() {
     destroy(rel_cap);
 }
 
-/// The production constructor preserves all 255 track positions in both rich
-/// release events, including duplicate recording IDs and zero-valued splits.
+/// The production constructor preserves all 255 track positions in the rich
+/// Published event, including duplicate recording IDs and zero-valued splits.
 #[test]
 fun test_release_rich_event_arrays_at_max_tracks() {
     let ctx = &mut tx_context::dummy();
@@ -93,33 +93,7 @@ fun test_release_rich_event_arrays_at_max_tracks() {
         nonce,
     );
 
-    let mut created_events = event::events_by_type<release::ReleaseCreatedEvent>();
-    assert_eq!(created_events.length(), 1);
-    let (
-        _registry_id,
-        event_release_id,
-        _cap_id,
-        _title,
-        _digest,
-        event_nonce,
-        event_composition_ids,
-        event_recording_ids,
-        event_splits,
-        track_count,
-    ) = release::release_created_event_fields(created_events.pop_back());
-    assert_eq!(event_release_id, predicted_release_id.to_address());
-    assert_eq!(event_nonce, nonce);
-    assert_eq!(track_count, 255);
-    assert_eq!(event_composition_ids.length(), 255);
-    assert_eq!(event_recording_ids.length(), 255);
-    assert_eq!(event_splits.length(), 255);
-    assert_eq!(event_composition_ids[0], composition_ids[0].to_address());
-    assert_eq!(event_composition_ids[254], composition_ids[254].to_address());
-    assert_eq!(event_recording_ids[0], recording_ids[0].to_address());
-    assert_eq!(event_recording_ids[254], recording_ids[254].to_address());
-    assert_eq!(event_splits[0], 0);
-    assert_eq!(event_splits[1], 40);
-    assert_eq!(event_splits[254], 79);
+    assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
     let clock = sui::clock::create_for_testing(ctx);
     rel.publish(&rel_cap, &clock);
@@ -138,6 +112,9 @@ fun test_release_rich_event_arrays_at_max_tracks() {
         event_splits,
         assigned_track_count,
         shared_after,
+        _registry_id,
+        _digest,
+        event_nonce,
     ) = release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
     assert_eq!(event_composition_ids.length(), 255);
@@ -145,9 +122,13 @@ fun test_release_rich_event_arrays_at_max_tracks() {
     assert_eq!(event_splits.length(), 255);
     assert_eq!(assigned_track_count, 255);
     assert!(shared_after);
+    assert_eq!(event_nonce, nonce);
     assert_eq!(event_composition_ids[0], composition_ids[0].to_address());
+    assert_eq!(event_composition_ids[254], composition_ids[254].to_address());
+    assert_eq!(event_recording_ids[0], recording_ids[0].to_address());
     assert_eq!(event_recording_ids[254], recording_ids[254].to_address());
     assert_eq!(event_splits[0], 0);
+    assert_eq!(event_splits[1], 40);
     assert_eq!(event_splits[254], 79);
 
     destroy(registry);

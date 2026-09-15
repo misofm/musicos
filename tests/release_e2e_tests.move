@@ -123,31 +123,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     );
     // The claimed UID must equal the prediction the track was bound to.
     assert_eq!(object::id(&rel), predicted_release_id);
-
-    let mut created_events = event::events_by_type<release::ReleaseCreatedEvent>();
-    assert_eq!(created_events.length(), 1);
-    let (
-        event_registry_id,
-        event_release_id,
-        event_cap_id,
-        title_bytes,
-        release_digest,
-        event_nonce,
-        composition_ids,
-        recording_ids,
-        track_split_bps,
-        track_count,
-    ) = release::release_created_event_fields(created_events.pop_back());
-    assert_eq!(event_registry_id, registry_id.to_address());
-    assert_eq!(event_release_id, predicted_release_id.to_address());
-    assert_eq!(event_cap_id, object::id(&rel_cap).to_address());
-    assert_eq!(title_bytes, b"Single");
-    assert_eq!(release_digest, expected_digest(vector[recording_id], vector[10000], NONCE));
-    assert_eq!(event_nonce, NONCE);
-    assert_eq!(composition_ids, vector[composition_id.to_address()]);
-    assert_eq!(recording_ids, vector[recording_id.to_address()]);
-    assert_eq!(track_split_bps, vector[10000]);
-    assert_eq!(track_count, 1);
+    assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
     let clock = sui::clock::create_for_testing(scenario.ctx());
     let clock_id = object::id(&clock).to_address();
@@ -167,6 +143,9 @@ fun full_track_release_flow_publishes_at_derived_id() {
         track_split_bps,
         assigned_track_count,
         shared_after,
+        event_registry_id,
+        release_digest,
+        event_nonce,
     ) = release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
     assert_eq!(event_cap_id, object::id(&rel_cap).to_address());
@@ -178,6 +157,9 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(track_split_bps, vector[10000]);
     assert_eq!(assigned_track_count, 1);
     assert!(shared_after);
+    assert_eq!(event_registry_id, registry_id.to_address());
+    assert_eq!(release_digest, expected_digest(vector[recording_id], vector[10000], NONCE));
+    assert_eq!(event_nonce, NONCE);
 
     destroy(rel_cap);
     test_scenario::return_shared(registry);

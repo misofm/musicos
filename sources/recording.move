@@ -118,7 +118,20 @@ public struct RecordingAdminCapKey() has copy, drop, store;
 /// Lifecycle state of a recording.
 public enum RecordingState has copy, drop, store {
     /// Recording is being set up and can be modified.
-    Initialized,
+    Initialized {
+        share_currency_id: address,
+        consumed_treasury_cap_id: address,
+        created_by: address,
+        composition_royalty_rate_bps: u16,
+        share_supply_before: u64,
+        shares_before_grant: u64,
+        composition_shares_granted: u64,
+        shares_returned: u64,
+        share_decimals: u8,
+        share_supply_fixed_after: bool,
+        composition_funds_sent: bool,
+        created_admin_cap_id: address,
+    },
     /// Recording is published and immutable. Includes publication timestamp.
     Published(
         /// Timestamp (ms) when published.
@@ -128,11 +141,14 @@ public enum RecordingState has copy, drop, store {
 
 // === Events ===
 
-/// Emitted once when a recording is created.
-public struct RecordingCreatedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
+/// Emitted once when a recording is published.
+public struct RecordingPublishedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
     recording_id: address,
     composition_id: address,
     recording_admin_cap_id: address,
+    clock_id: address,
+    published_at_ms: u64,
+    shared_after: bool,
     share_currency_id: address,
     consumed_treasury_cap_id: address,
     created_by: address,
@@ -144,20 +160,11 @@ public struct RecordingCreatedEvent<phantom RecordingShare, phantom CompositionS
     share_decimals: u8,
     share_supply_fixed_after: bool,
     composition_funds_sent: bool,
+    created_admin_cap_id: address,
 }
 
-/// Emitted once when a recording is published.
-public struct RecordingPublishedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
-    recording_id: address,
-    composition_id: address,
-    recording_admin_cap_id: address,
-    clock_id: address,
-    published_at_ms: u64,
-    shared_after: bool,
-}
-
-/// Legacy event type retained for ABI compatibility. New recordings emit
-/// `RecordingCreatedEvent` instead; this type is intentionally dormant.
+/// Legacy event type retained for ABI compatibility. This type is intentionally
+/// dormant; recording creation is reported by the later Published event.
 public struct CompositionSharesGrantedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
     recording_id: ID,
     composition_id: ID,
@@ -210,7 +217,6 @@ public fun new<RecordingShare, CompositionShare>(
     Balance<RecordingShare>,
 ) {
     let composition_id = object::id(composition);
-    let composition_id_address = composition_id.to_address();
     let composition_royalty_rate = composition.royalty_rate();
     let share_currency_id = object::id_address(share_currency);
     let consumed_treasury_cap_id = object::id_address(&share_treasury_cap);
@@ -226,7 +232,20 @@ public fun new<RecordingShare, CompositionShare>(
     // `CompositionShare` phantom (durable identity).
     let mut recording = Recording<RecordingShare, CompositionShare> {
         id: object::new(ctx),
-        state: RecordingState::Initialized,
+        state: RecordingState::Initialized {
+            share_currency_id,
+            consumed_treasury_cap_id,
+            created_by,
+            composition_royalty_rate_bps: composition_royalty_rate.value(),
+            share_supply_before,
+            shares_before_grant: 0,
+            composition_shares_granted: 0,
+            shares_returned: 0,
+            share_decimals,
+            share_supply_fixed_after: false,
+            composition_funds_sent: false,
+            created_admin_cap_id: @0x0,
+        },
         composition_id,
     };
 
@@ -250,7 +269,7 @@ public fun new<RecordingShare, CompositionShare>(
     //
     // A 0% rate (e.g. a generative recording with no authored composition) yields
     // no cut: skip the split/send so we don't open a zero-value share accumulator
-    // for the composition. The creation event still records that the applied
+    // for the composition. The Published event still records that the applied
     // rate was zero.
     let composition_cut = composition_royalty_rate.apply(recording_shares.value());
     let mut composition_funds_sent = false;
@@ -260,10 +279,7 @@ public fun new<RecordingShare, CompositionShare>(
         composition_funds_sent = true;
     };
 
-    emit(RecordingCreatedEvent<RecordingShare, CompositionShare> {
-        recording_id: object::id_address(&recording),
-        composition_id: composition_id_address,
-        recording_admin_cap_id: object::id_address(&recording_admin_cap),
+    recording.state = RecordingState::Initialized {
         share_currency_id,
         consumed_treasury_cap_id,
         created_by,
@@ -275,7 +291,8 @@ public fun new<RecordingShare, CompositionShare>(
         share_decimals,
         share_supply_fixed_after: share_currency.is_supply_fixed(),
         composition_funds_sent,
-    });
+        created_admin_cap_id: object::id_address(&recording_admin_cap),
+    };
 
     (recording, recording_admin_cap, recording_shares)
 }
@@ -291,7 +308,20 @@ public fun publish<RecordingShare, CompositionShare>(
     clock: &Clock,
 ) {
     match (self.state) {
-        RecordingState::Initialized => {
+        RecordingState::Initialized {
+            share_currency_id,
+            consumed_treasury_cap_id,
+            created_by,
+            composition_royalty_rate_bps,
+            share_supply_before,
+            shares_before_grant,
+            composition_shares_granted,
+            shares_returned,
+            share_decimals,
+            share_supply_fixed_after,
+            composition_funds_sent,
+            created_admin_cap_id,
+        } => {
             // Set the recording's publish timestamp.
             let published_at_ms = clock.timestamp_ms();
             self.state = RecordingState::Published(published_at_ms);
@@ -310,6 +340,18 @@ public fun publish<RecordingShare, CompositionShare>(
                 clock_id,
                 published_at_ms,
                 shared_after: true,
+                share_currency_id,
+                consumed_treasury_cap_id,
+                created_by,
+                composition_royalty_rate_bps,
+                share_supply_before,
+                shares_before_grant,
+                composition_shares_granted,
+                shares_returned,
+                share_decimals,
+                share_supply_fixed_after,
+                composition_funds_sent,
+                created_admin_cap_id,
             });
         },
         _ => abort ENotInitializedState,
@@ -360,7 +402,7 @@ public fun uid_mut<RecordingShare, CompositionShare>(
 public fun is_initialized_state<RecordingShare, CompositionShare>(
     self: &Recording<RecordingShare, CompositionShare>,
 ): bool {
-    match (self.state) { RecordingState::Initialized => true, _ => false }
+    match (self.state) { RecordingState::Initialized { .. } => true, _ => false }
 }
 
 #[test_only]
@@ -371,13 +413,31 @@ public fun is_published_state<RecordingShare, CompositionShare>(
 }
 
 #[test_only]
+public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
+    sui::bcs::to_bytes(&RecordingState::Published(timestamp_ms))
+}
+
+#[test_only]
 public fun new_for_testing<RecordingShare, CompositionShare>(
     composition_id: ID,
     ctx: &mut TxContext,
 ): (Recording<RecordingShare, CompositionShare>, RecordingAdminCap<RecordingShare>) {
     let mut recording = Recording<RecordingShare, CompositionShare> {
         id: object::new(ctx),
-        state: RecordingState::Initialized,
+        state: RecordingState::Initialized {
+            share_currency_id: @0x0,
+            consumed_treasury_cap_id: @0x0,
+            created_by: @0x0,
+            composition_royalty_rate_bps: 0,
+            share_supply_before: 0,
+            shares_before_grant: 0,
+            composition_shares_granted: 0,
+            shares_returned: 0,
+            share_decimals: 0,
+            share_supply_fixed_after: false,
+            composition_funds_sent: false,
+            created_admin_cap_id: @0x0,
+        },
         composition_id,
     };
 
@@ -402,52 +462,13 @@ public fun composition_shares_granted_event_fields<RecordingShare, CompositionSh
     (recording_id, composition_id, value, rate_bps, granted_by)
 }
 
-/// Unpacks a `RecordingCreatedEvent` for test-side field assertions.
-#[test_only]
-public fun recording_created_event_fields<RecordingShare, CompositionShare>(
-    event: RecordingCreatedEvent<RecordingShare, CompositionShare>,
-): (address, address, address, address, address, address, u16, u64, u64, u64, u64, u8, bool, bool) {
-    let RecordingCreatedEvent {
-        recording_id,
-        composition_id,
-        recording_admin_cap_id,
-        share_currency_id,
-        consumed_treasury_cap_id,
-        created_by,
-        composition_royalty_rate_bps,
-        share_supply_before,
-        shares_before_grant,
-        composition_shares_granted,
-        shares_returned,
-        share_decimals,
-        share_supply_fixed_after,
-        composition_funds_sent,
-    } = event;
-    (
-        recording_id,
-        composition_id,
-        recording_admin_cap_id,
-        share_currency_id,
-        consumed_treasury_cap_id,
-        created_by,
-        composition_royalty_rate_bps,
-        share_supply_before,
-        shares_before_grant,
-        composition_shares_granted,
-        shares_returned,
-        share_decimals,
-        share_supply_fixed_after,
-        composition_funds_sent,
-    )
-}
-
 /// Unpacks a `RecordingPublishedEvent` for test-side field assertions — the
 /// event's field is module-private, so tests in another module need this
 /// accessor to assert the full payload rather than just "an event fired".
 #[test_only]
 public fun recording_published_event_fields<RecordingShare, CompositionShare>(
     event: RecordingPublishedEvent<RecordingShare, CompositionShare>,
-): (address, address, address, address, u64, bool) {
+): (address, address, address, address, u64, bool, address, address, address, u16, u64, u64, u64, u64, u8, bool, bool, address) {
     let RecordingPublishedEvent {
         recording_id,
         composition_id,
@@ -455,6 +476,18 @@ public fun recording_published_event_fields<RecordingShare, CompositionShare>(
         clock_id,
         published_at_ms,
         shared_after,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        composition_royalty_rate_bps,
+        share_supply_before,
+        shares_before_grant,
+        composition_shares_granted,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+        composition_funds_sent,
+        created_admin_cap_id,
     } = event;
     (
         recording_id,
@@ -463,5 +496,17 @@ public fun recording_published_event_fields<RecordingShare, CompositionShare>(
         clock_id,
         published_at_ms,
         shared_after,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        composition_royalty_rate_bps,
+        share_supply_before,
+        shares_before_grant,
+        composition_shares_granted,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+        composition_funds_sent,
+        created_admin_cap_id,
     )
 }
