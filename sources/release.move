@@ -158,7 +158,11 @@ public struct ReleaseAdminCapKey() has copy, drop, store;
 /// Lifecycle state of a release.
 public enum ReleaseState has copy, drop, store {
     /// Release is initialized but not yet published.
-    Initialized,
+    Initialized {
+        registry_id: address,
+        release_digest: vector<u8>,
+        nonce: u256,
+    },
     /// Release is published and immutable. Includes publication timestamp.
     Published(
         /// Timestamp (ms) when published.
@@ -167,20 +171,6 @@ public enum ReleaseState has copy, drop, store {
 }
 
 // === Events ===
-
-/// Emitted once when a release is created.
-public struct ReleaseCreatedEvent has copy, drop {
-    registry_id: address,
-    release_id: address,
-    release_admin_cap_id: address,
-    title_bytes: vector<u8>,
-    release_digest: vector<u8>,
-    nonce: u256,
-    composition_ids: vector<address>,
-    recording_ids: vector<address>,
-    track_split_bps: vector<u64>,
-    track_count: u64,
-}
 
 /// Emitted once when a release is published.
 public struct ReleasePublishedEvent has copy, drop {
@@ -194,6 +184,9 @@ public struct ReleasePublishedEvent has copy, drop {
     track_split_bps: vector<u64>,
     assigned_track_count: u64,
     shared_after: bool,
+    registry_id: address,
+    release_digest: vector<u8>,
+    nonce: u256,
 }
 
 /// Emitted once when package initialization creates the canonical shared
@@ -249,12 +242,14 @@ public fun new(
     assert!(split_sum == (bps::denominator!() as u64), EInvalidTrackSplitsSum);
 
     let release_digest = calculate_release_digest(recording_ids, track_split_values, nonce);
-    let event_release_digest = release_digest;
-    let title_bytes = title.substring(0, title.length()).into_bytes();
     let release_uid = claim(&mut self.id, ReleaseKey(release_digest));
     let mut release = Release {
         id: release_uid,
-        state: ReleaseState::Initialized,
+        state: ReleaseState::Initialized {
+            registry_id: object::id_address(self),
+            release_digest,
+            nonce,
+        },
         title,
         tracks,
     };
@@ -263,23 +258,6 @@ public fun new(
         id: claim(&mut release.id, ReleaseAdminCapKey()),
         release_id: object::id(&release),
     };
-
-    let composition_ids = release.tracks.map_ref!(|track| track.composition_id().to_address());
-    let recording_ids = release.tracks.map_ref!(|track| track.recording_id().to_address());
-    let track_split_bps = release.tracks.map_ref!(|track| track.split_bps().value() as u64);
-
-    emit(ReleaseCreatedEvent {
-        registry_id: object::id_address(self),
-        release_id: object::id_address(&release),
-        release_admin_cap_id: object::id_address(&release_admin_cap),
-        title_bytes,
-        release_digest: event_release_digest,
-        nonce,
-        composition_ids,
-        recording_ids,
-        track_split_bps,
-        track_count: release.tracks.length(),
-    });
 
     (release, release_admin_cap)
 }
@@ -315,7 +293,11 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
     self.authorize(cap);
 
     match (self.state) {
-        ReleaseState::Initialized => {
+        ReleaseState::Initialized {
+            registry_id,
+            release_digest,
+            nonce,
+        } => {
             // Assert that the tracks are assigned to the release.
             self.assert_track_assignments();
 
@@ -346,6 +328,9 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
                 track_split_bps,
                 assigned_track_count,
                 shared_after: true,
+                registry_id,
+                release_digest,
+                nonce,
             });
         },
         _ => abort ENotInitializedState,
@@ -452,37 +437,6 @@ public fun release_registry_created_event_fields(
     (registry_id, created_by, shared_after)
 }
 
-/// Unpacks a `ReleaseCreatedEvent` for test-side field assertions.
-#[test_only]
-public fun release_created_event_fields(
-    event: ReleaseCreatedEvent,
-): (address, address, address, vector<u8>, vector<u8>, u256, vector<address>, vector<address>, vector<u64>, u64) {
-    let ReleaseCreatedEvent {
-        registry_id,
-        release_id,
-        release_admin_cap_id,
-        title_bytes,
-        release_digest,
-        nonce,
-        composition_ids,
-        recording_ids,
-        track_split_bps,
-        track_count,
-    } = event;
-    (
-        registry_id,
-        release_id,
-        release_admin_cap_id,
-        title_bytes,
-        release_digest,
-        nonce,
-        composition_ids,
-        recording_ids,
-        track_split_bps,
-        track_count,
-    )
-}
-
 // The state predicates are test-only: create-and-publish is atomic (see the
 // module doc), so every release any runtime caller can hold is `Published` —
 // the answer is known a priori and a public accessor would carry no
@@ -494,7 +448,7 @@ public fun release_created_event_fields(
 #[test_only]
 public fun release_published_event_fields(
     event: ReleasePublishedEvent,
-): (address, address, address, vector<u8>, u64, vector<address>, vector<address>, vector<u64>, u64, bool) {
+): (address, address, address, vector<u8>, u64, vector<address>, vector<address>, vector<u64>, u64, bool, address, vector<u8>, u256) {
     let ReleasePublishedEvent {
         release_id,
         release_admin_cap_id,
@@ -506,6 +460,9 @@ public fun release_published_event_fields(
         track_split_bps,
         assigned_track_count,
         shared_after,
+        registry_id,
+        release_digest,
+        nonce,
     } = event;
     (
         release_id,
@@ -518,13 +475,16 @@ public fun release_published_event_fields(
         track_split_bps,
         assigned_track_count,
         shared_after,
+        registry_id,
+        release_digest,
+        nonce,
     )
 }
 
 #[test_only]
 public fun is_initialized_state(self: &Release): bool {
     match (self.state) {
-        ReleaseState::Initialized => true,
+        ReleaseState::Initialized { .. } => true,
         _ => false,
     }
 }
@@ -538,6 +498,11 @@ public fun is_published_state(self: &Release): bool {
 }
 
 #[test_only]
+public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
+    to_bytes(&ReleaseState::Published(timestamp_ms))
+}
+
+#[test_only]
 public fun new_for_testing(
     title: String,
     tracks: vector<Track>,
@@ -547,7 +512,11 @@ public fun new_for_testing(
 
     let mut release = Release {
         id: object::new(ctx),
-        state: ReleaseState::Initialized,
+        state: ReleaseState::Initialized {
+            registry_id: @0x0,
+            release_digest: vector[],
+            nonce: 0,
+        },
         title,
         tracks,
     };

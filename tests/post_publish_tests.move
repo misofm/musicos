@@ -25,6 +25,15 @@ const ENotInitializedState: u64 = 10;
 // Mirrors release::EUnauthorized (0).
 const EUnauthorized: u64 = 0;
 
+#[test]
+fun published_state_bcs_layout_keeps_variant_tag_and_timestamp() {
+    let timestamp = 0x0102030405060708u64;
+    let expected = vector[1u8, 8u8, 7u8, 6u8, 5u8, 4u8, 3u8, 2u8, 1u8];
+    assert_eq!(composition::published_state_bcs_bytes(timestamp), expected);
+    assert_eq!(recording::published_state_bcs_bytes(timestamp), expected);
+    assert_eq!(release::published_state_bcs_bytes(timestamp), expected);
+}
+
 /// Publishes a minimal composition and returns its admin cap (object is shared).
 fun publish_composition(
     scenario: &mut test_scenario::Scenario,
@@ -42,7 +51,24 @@ fun publish_composition(
     // Event payload captures the final immutable fields and shared-object linkage.
     let mut events = event::events_by_type<CompositionPublishedEvent<CompositionShare>>();
     assert_eq!(events.length(), 1);
-    let (event_comp_id, event_cap_id, event_clock_id, title_bytes, rate_bps, published_at_ms, shared_after) =
+    let (
+        event_comp_id,
+        event_cap_id,
+        event_clock_id,
+        title_bytes,
+        rate_bps,
+        published_at_ms,
+        shared_after,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        share_supply_before,
+        share_supply_after,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+        created_admin_cap_id,
+    ) =
         composition::composition_published_event_fields(events.pop_back());
     assert_eq!(event_comp_id, comp_id.to_address());
     assert_eq!(event_cap_id, object::id(&cap).to_address());
@@ -51,6 +77,15 @@ fun publish_composition(
     assert_eq!(rate_bps, 1500);
     assert_eq!(published_at_ms, 4242);
     assert!(shared_after);
+    assert_eq!(share_currency_id, @0x0);
+    assert_eq!(consumed_treasury_cap_id, @0x0);
+    assert_eq!(created_by, @0x0);
+    assert_eq!(share_supply_before, 0);
+    assert_eq!(share_supply_after, 0);
+    assert_eq!(shares_returned, 0);
+    assert_eq!(share_decimals, 0);
+    assert!(!share_supply_fixed_after);
+    assert_eq!(created_admin_cap_id, @0x0);
 
     cap
 }
@@ -75,7 +110,26 @@ fun publish_recording(
     // Event payload captures the recording/composition linkage and shared clock.
     let mut events = event::events_by_type<RecordingPublishedEvent<RecordingShare, CompositionShare>>();
     assert_eq!(events.length(), 1);
-    let (event_rec_id, event_comp_id, event_cap_id, event_clock_id, published_at_ms, shared_after) =
+    let (
+        event_rec_id,
+        event_comp_id,
+        event_cap_id,
+        event_clock_id,
+        published_at_ms,
+        shared_after,
+        share_currency_id,
+        consumed_treasury_cap_id,
+        created_by,
+        composition_royalty_rate_bps,
+        share_supply_before,
+        shares_before_grant,
+        composition_shares_granted,
+        shares_returned,
+        share_decimals,
+        share_supply_fixed_after,
+        composition_funds_sent,
+        created_admin_cap_id,
+    ) =
         recording::recording_published_event_fields(events.pop_back());
     assert_eq!(event_rec_id, rec_id.to_address());
     assert_eq!(event_comp_id, composition_id.to_address());
@@ -83,6 +137,18 @@ fun publish_recording(
     assert_eq!(event_clock_id, clock_id);
     assert_eq!(published_at_ms, 4343);
     assert!(shared_after);
+    assert_eq!(share_currency_id, @0x0);
+    assert_eq!(consumed_treasury_cap_id, @0x0);
+    assert_eq!(created_by, @0x0);
+    assert_eq!(composition_royalty_rate_bps, 0);
+    assert_eq!(share_supply_before, 0);
+    assert_eq!(shares_before_grant, 0);
+    assert_eq!(composition_shares_granted, 0);
+    assert_eq!(shares_returned, 0);
+    assert_eq!(share_decimals, 0);
+    assert!(!share_supply_fixed_after);
+    assert!(!composition_funds_sent);
+    assert_eq!(created_admin_cap_id, @0x0);
 
     cap
 }
@@ -119,7 +185,8 @@ fun publish_titled_release(
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
     let (event_rel_id, event_cap_id, event_clock_id, title_bytes, published_at_ms,
-        composition_ids, recording_ids, track_split_bps, assigned_track_count, shared_after) =
+        composition_ids, recording_ids, track_split_bps, assigned_track_count, shared_after,
+        registry_id, release_digest, nonce) =
         release::release_published_event_fields(events.pop_back());
     assert_eq!(event_rel_id, rel_id.to_address());
     assert_eq!(event_cap_id, object::id(&cap).to_address());
@@ -131,6 +198,9 @@ fun publish_titled_release(
     assert_eq!(track_split_bps, vector[10000]);
     assert_eq!(assigned_track_count, 1);
     assert!(shared_after);
+    assert_eq!(registry_id, @0x0);
+    assert_eq!(release_digest, vector[]);
+    assert_eq!(nonce, 0);
 
     (cap, rel_id)
 }

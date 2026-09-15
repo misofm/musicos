@@ -41,7 +41,7 @@ rightsholders' consent.
 
 ### Lifecycle
 
-Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. Creation and publication emit self-contained rich events with object/capability linkage, immutable fields, timestamps, and ordered release-track data.
+Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. `Initialized` carries the temporary creation metadata needed by `publish`; because the objects are key-only and cannot escape the creating transaction, only the final `Published` transition emits a lifecycle event. Each Published event is self-contained with object/capability linkage, creation provenance and economics, immutable fields, timestamps, and ordered release-track data.
 
 ### Ownership
 
