@@ -1,0 +1,4 @@
+[package]
+name = "other_recording_share"
+edition = "2024"
+license = "Apache 2.0"
