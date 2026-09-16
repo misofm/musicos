@@ -25,8 +25,20 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.mainnet.musicos]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "714AAA4BB26267473624E2C01218083302A9308C679130C9C0F9EA2C0AB5CDAC"
-deps = { bps = "bps", share = "share", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "C70C6DB78908EBD6A381E16BA0DD068C5802171BF68DE127FD739564D95B3233"
+deps = { bps = "bps", other_recording_share = "other_recording_share", recording_share = "recording_share", share = "share", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.other_recording_share]
+source = { local = "test-packages/other_recording_share" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.recording_share]
+source = { local = "test-packages/recording_share" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.share]
 source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "9dffca5332c8b24d792926fba647d4503a81e5f7" }
@@ -55,8 +67,20 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.musicos]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "26710C0D5A1A191D2F72866FDD1A71B8A39B655318732464526E1D5EF4A3C77E"
-deps = { bps = "bps", share = "share", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "E8451E6CF57FB80853D7BA70B43A904CB1B36E8898054797C4621FBC2D5322A2"
+deps = { bps = "bps", other_recording_share = "other_recording_share", recording_share = "recording_share", share = "share", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.other_recording_share]
+source = { local = "test-packages/other_recording_share" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.recording_share]
+source = { local = "test-packages/recording_share" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.share]
 source = { git = "https://github.com/misofm/share.git", subdir = ".", rev = "9dffca5332c8b24d792926fba647d4503a81e5f7" }

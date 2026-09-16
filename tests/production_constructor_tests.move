@@ -6,27 +6,42 @@
 /// (fixed 10M supply, consumed treasury cap) and, for recordings, the fresh
 /// `object::new` id plus the read-only `&Composition` royalty snapshot.
 ///
-/// None of these constructors ever share, transfer, or otherwise dispose of
-/// the objects they return — a `Composition`/`Recording` is `key`-only with
-/// no `drop`, so tests must (and do) `destroy` every value directly. Their
-/// lifecycle event is emitted only by `publish`; ownership-flow behavior lives
-/// in `post_publish_tests` and `release_e2e_tests`.
+/// Each scenario uses one CoinRegistry and distinct composition/recording
+/// share types. Currencies are finalized and shared through production APIs,
+/// then retrieved in a later transaction before calling the constructors.
 #[test_only]
 module musicos::production_constructor_tests;
 
 use musicos::composition;
 use musicos::recording;
 use musicos::share::{Self as test_share, Share};
-use musicos::test_helpers::{Self, CompositionShare};
+use musicos::test_helpers;
+use other_recording_share::share::{Self as other_recording_share, Share as OtherRecordingShare};
+use recording_share::share::{Self as recording_share, Share as RecordingShare};
 use std::unit_test::{assert_eq, destroy};
+use sui::coin::{Self, Coin, TreasuryCap};
+use sui::coin_registry::{Self, CoinRegistry, Currency};
 use sui::event;
-use sui::test_scenario;
+use sui::test_scenario::{Self, Scenario};
 
 /// 10,000,000.000000 tokens at 6 decimals — must match share::SUPPLY.
 const SHARE_SUPPLY: u64 = 10_000_000_000_000;
 
-fun assert_production_recording_published_event(
-    event: recording::RecordingPublishedEvent<Share, Share>,
+/// One registry per simulated chain, including both recordings' currencies.
+fun new_scenario(): Scenario {
+    let mut scenario = test_scenario::begin(@0x0);
+    let ctx = scenario.ctx();
+    let mut registry = coin_registry::create_coin_data_registry_for_testing(ctx);
+    transfer::public_transfer(test_share::register(&mut registry, ctx), @0x0);
+    transfer::public_transfer(recording_share::register(&mut registry, ctx), @0x0);
+    transfer::public_transfer(other_recording_share::register(&mut registry, ctx), @0x0);
+    coin_registry::share_for_testing(registry);
+    scenario.next_tx(@0x0);
+    scenario
+}
+
+fun assert_production_recording_published_event<RecordingShare>(
+    event: recording::RecordingPublishedEvent<RecordingShare, Share>,
     expected_recording_id: address,
     expected_composition_id: address,
     expected_cap_id: address,
@@ -79,11 +94,22 @@ fun assert_production_recording_published_event(
     assert_eq!(created_admin_cap_id, expected_cap_id);
 }
 
+#[test, expected_failure(abort_code = coin_registry::ECurrencyAlreadyExists, location = sui::coin_registry)]
+fun duplicate_share_currency_registration_aborts() {
+    let mut scenario = new_scenario();
+    let mut registry = scenario.take_shared<CoinRegistry>();
+    let duplicate_cap = test_share::register(&mut registry, scenario.ctx());
+    transfer::public_transfer(duplicate_cap, @0x0);
+    test_scenario::return_shared(registry);
+    scenario.end();
+}
+
 #[test]
 fun composition_new_initializes_fixed_share_supply() {
-    let mut scenario = test_scenario::begin(@0x0);
+    let mut scenario = new_scenario();
+    let mut currency = scenario.take_shared<Currency<Share>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
     let ctx = scenario.ctx();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
     let currency_id = object::id(&currency).to_address();
     let treasury_cap_id = object::id(&treasury_cap).to_address();
     let (comp, cap, shares) = composition::new<Share>(
@@ -93,6 +119,7 @@ fun composition_new_initializes_fixed_share_supply() {
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
 
     // The full fixed supply is returned to the creator.
     assert_eq!(shares.value(), SHARE_SUPPLY);
@@ -148,20 +175,21 @@ fun composition_new_initializes_fixed_share_supply() {
     assert_eq!(created_admin_cap_id, composition_cap_id);
 
     sui::transfer::public_transfer(cap, @0x0);
+    transfer::public_transfer(coin::from_balance(shares, scenario.ctx()), @0x0);
     scenario.next_tx(@0x0);
     let comp = scenario.take_shared<composition::Composition<Share>>();
     let cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
     destroy(comp);
     destroy(cap);
-    destroy(shares);
-    destroy(currency);
     scenario.end();
 }
 
 #[test, expected_failure(abort_code = 0, location = bps::bps)] // bps::EOverflow
 fun composition_new_above_100_percent_aborts() {
-    let ctx = &mut tx_context::dummy();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
+    let mut scenario = new_scenario();
+    let mut currency = scenario.take_shared<Currency<Share>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
+    let ctx = scenario.ctx();
 
     let (comp, cap, shares) = composition::new<Share>(
         b"Greedy Song".to_string(),
@@ -170,18 +198,20 @@ fun composition_new_above_100_percent_aborts() {
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
 
     destroy(comp);
     destroy(cap);
     destroy(shares);
-    destroy(currency);
+    scenario.end();
 }
 
 #[test]
 fun recording_new_settles_composition_cut() {
-    let mut scenario = test_scenario::begin(@0x0);
+    let mut scenario = new_scenario();
+    let mut composition_currency = scenario.take_shared<Currency<Share>>();
+    let composition_treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
     let ctx = scenario.ctx();
-    let (mut composition_currency, composition_treasury_cap) = test_share::currency_for_testing(ctx);
     let (comp, comp_cap, comp_shares) = composition::new<Share>(
         b"Song".to_string(),
         1500,
@@ -189,6 +219,7 @@ fun recording_new_settles_composition_cut() {
         composition_treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(composition_currency);
 
     // A production composition is published before the next transaction can
     // create a recording against its shared identity.  This mirrors the
@@ -199,19 +230,22 @@ fun recording_new_settles_composition_cut() {
     comp.publish(&comp_cap, &composition_clock);
     composition_clock.destroy_for_testing();
     sui::transfer::public_transfer(comp_cap, @0x0);
+    transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
     scenario.next_tx(@0x0);
     let comp = scenario.take_shared<composition::Composition<Share>>();
+    let mut currency = scenario.take_shared<Currency<RecordingShare>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<RecordingShare>>();
     let ctx = scenario.ctx();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
     let currency_id = object::id(&currency).to_address();
     let treasury_cap_id = object::id(&treasury_cap).to_address();
-    let (rec, rec_cap, shares) = recording::new<Share, Share>(
+    let (rec, rec_cap, shares) = recording::new<RecordingShare, Share>(
         &comp,
         &mut currency,
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
 
     // The creator keeps the full supply minus the composition's royalty-rate
     // cut (15% of 10M), which `recording::new` splits off and sends to the
@@ -220,7 +254,7 @@ fun recording_new_settles_composition_cut() {
     assert_eq!(rec.composition_id(), object::id(&comp));
     assert!(rec.is_initialized_state());
     assert!(!rec.is_published_state());
-    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<Share, Share>>().length(), 0);
+    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
     let recording_cap_id = object::id(&rec_cap).to_address();
@@ -230,7 +264,7 @@ fun recording_new_settles_composition_cut() {
     let clock_id = object::id(&clock).to_address();
     clock.destroy_for_testing();
 
-    let mut events = event::events_by_type<recording::RecordingPublishedEvent<Share, Share>>();
+    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
     assert_eq!(events.length(), 1);
     let (
         event_recording_id,
@@ -274,27 +308,34 @@ fun recording_new_settles_composition_cut() {
     test_scenario::return_shared(comp);
     sui::transfer::public_transfer(rec_cap, @0x0);
 
+    transfer::public_transfer(coin::from_balance(shares, scenario.ctx()), @0x0);
     scenario.next_tx(@0x0);
-    let comp = scenario.take_shared<composition::Composition<Share>>();
-    let rec = scenario.take_shared<recording::Recording<Share, Share>>();
+    let mut comp = scenario.take_shared<composition::Composition<Share>>();
+    let rec = scenario.take_shared<recording::Recording<RecordingShare, Share>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
-    let rec_cap = scenario.take_from_sender<recording::RecordingAdminCap<Share>>();
+    let rec_cap = scenario.take_from_sender<recording::RecordingAdminCap<RecordingShare>>();
     destroy(rec);
+    let mut creator_shares = scenario.take_from_sender<Coin<RecordingShare>>();
+    let withdrawal = sui::balance::withdraw_funds_from_object<RecordingShare>(
+        comp.uid_mut(&comp_cap), 1_500_000_000_000,
+    );
+    let grant = sui::balance::redeem_funds(withdrawal);
+    assert_eq!(grant.value(), 1_500_000_000_000);
+    creator_shares.join(coin::from_balance(grant, scenario.ctx()));
+    assert_eq!(creator_shares.value(), SHARE_SUPPLY);
+    scenario.return_to_sender(creator_shares);
     destroy(comp);
     destroy(comp_cap);
     destroy(rec_cap);
-    destroy(shares);
-    destroy(currency);
-    destroy(composition_currency);
-    destroy(comp_shares);
     scenario.end();
 }
 
 #[test]
 fun recording_new_zero_rate_grants_no_shares() {
-    let mut scenario = test_scenario::begin(@0x0);
+    let mut scenario = new_scenario();
+    let mut composition_currency = scenario.take_shared<Currency<Share>>();
+    let composition_treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
     let ctx = scenario.ctx();
-    let (mut composition_currency, composition_treasury_cap) = test_share::currency_for_testing(ctx);
     let (comp, comp_cap, comp_shares) = composition::new<Share>(
         b"Generative Track".to_string(),
         0,
@@ -302,33 +343,37 @@ fun recording_new_zero_rate_grants_no_shares() {
         composition_treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(composition_currency);
     let composition_id = object::id(&comp).to_address();
     let mut composition_clock = sui::clock::create_for_testing(ctx);
     sui::clock::set_for_testing(&mut composition_clock, 4440);
     comp.publish(&comp_cap, &composition_clock);
     composition_clock.destroy_for_testing();
     sui::transfer::public_transfer(comp_cap, @0x0);
+    transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
     scenario.next_tx(@0x0);
     let comp = scenario.take_shared<composition::Composition<Share>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
+    let mut currency = scenario.take_shared<Currency<RecordingShare>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<RecordingShare>>();
     let ctx = scenario.ctx();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
     let currency_id = object::id(&currency).to_address();
     let treasury_cap_id = object::id(&treasury_cap).to_address();
 
-    let (rec, rec_cap, shares) = recording::new<Share, Share>(
+    let (rec, rec_cap, shares) = recording::new<RecordingShare, Share>(
         &comp,
         &mut currency,
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
 
     // A 0% composition royalty grants the composition no recording shares: the
     // split/send is skipped, so the creator retains the entire supply.
     assert_eq!(shares.value(), SHARE_SUPPLY);
 
-    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<Share, Share>>().length(), 0);
+    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
     let recording_cap_id = object::id(&rec_cap).to_address();
@@ -338,7 +383,7 @@ fun recording_new_zero_rate_grants_no_shares() {
     let clock_id = object::id(&clock).to_address();
     clock.destroy_for_testing();
 
-    let mut events = event::events_by_type<recording::RecordingPublishedEvent<Share, Share>>();
+    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
     assert_eq!(events.length(), 1);
     let (
         event_recording_id,
@@ -381,26 +426,35 @@ fun recording_new_zero_rate_grants_no_shares() {
 
     test_scenario::return_shared(comp);
     sui::transfer::public_transfer(comp_cap, @0x0);
+    transfer::public_transfer(coin::from_balance(shares, scenario.ctx()), @0x0);
+    transfer::public_transfer(rec_cap, @0x0);
     scenario.next_tx(@0x0);
-    let comp = scenario.take_shared<composition::Composition<Share>>();
-    let rec = scenario.take_shared<recording::Recording<Share, Share>>();
+    let mut comp = scenario.take_shared<composition::Composition<Share>>();
+    let rec = scenario.take_shared<recording::Recording<RecordingShare, Share>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
+    let mut creator_shares = scenario.take_from_sender<Coin<RecordingShare>>();
+    let withdrawal = sui::balance::withdraw_funds_from_object<RecordingShare>(
+        comp.uid_mut(&comp_cap), 0,
+    );
+    let grant = sui::balance::redeem_funds(withdrawal);
+    assert_eq!(grant.value(), 0);
+    creator_shares.join(coin::from_balance(grant, scenario.ctx()));
+    assert_eq!(creator_shares.value(), SHARE_SUPPLY);
+    scenario.return_to_sender(creator_shares);
     destroy(comp);
     destroy(comp_cap);
+    let rec_cap = scenario.take_from_sender<recording::RecordingAdminCap<RecordingShare>>();
     destroy(rec_cap);
     destroy(rec);
-    destroy(shares);
-    destroy(currency);
-    destroy(comp_shares);
-    destroy(composition_currency);
     scenario.end();
 }
 
 #[test]
 fun recording_new_full_rate_grants_full_supply() {
-    let mut scenario = test_scenario::begin(@0x0);
+    let mut scenario = new_scenario();
+    let mut composition_currency = scenario.take_shared<Currency<Share>>();
+    let composition_treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
     let ctx = scenario.ctx();
-    let (mut composition_currency, composition_treasury_cap) = test_share::currency_for_testing(ctx);
     let (comp, comp_cap, comp_shares) = composition::new<Share>(
         b"Full Royalty".to_string(),
         10000,
@@ -408,30 +462,34 @@ fun recording_new_full_rate_grants_full_supply() {
         composition_treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(composition_currency);
     let composition_id = object::id(&comp).to_address();
     let mut composition_clock = sui::clock::create_for_testing(ctx);
     sui::clock::set_for_testing(&mut composition_clock, 4450);
     comp.publish(&comp_cap, &composition_clock);
     composition_clock.destroy_for_testing();
     sui::transfer::public_transfer(comp_cap, @0x0);
+    transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
     scenario.next_tx(@0x0);
     let comp = scenario.take_shared<composition::Composition<Share>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
+    let mut currency = scenario.take_shared<Currency<RecordingShare>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<RecordingShare>>();
     let ctx = scenario.ctx();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
     let currency_id = object::id(&currency).to_address();
     let treasury_cap_id = object::id(&treasury_cap).to_address();
 
-    let (rec, rec_cap, shares) = recording::new<Share, Share>(
+    let (rec, rec_cap, shares) = recording::new<RecordingShare, Share>(
         &comp,
         &mut currency,
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
     assert_eq!(shares.value(), 0);
 
-    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<Share, Share>>().length(), 0);
+    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
     let recording_cap_id = object::id(&rec_cap).to_address();
@@ -441,7 +499,7 @@ fun recording_new_full_rate_grants_full_supply() {
     let clock_id = object::id(&clock).to_address();
     clock.destroy_for_testing();
 
-    let mut events = event::events_by_type<recording::RecordingPublishedEvent<Share, Share>>();
+    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
     assert_eq!(events.length(), 1);
     let (
         event_recording_id,
@@ -484,25 +542,35 @@ fun recording_new_full_rate_grants_full_supply() {
 
     test_scenario::return_shared(comp);
     sui::transfer::public_transfer(comp_cap, @0x0);
+    transfer::public_transfer(coin::from_balance(shares, scenario.ctx()), @0x0);
+    transfer::public_transfer(rec_cap, @0x0);
     scenario.next_tx(@0x0);
-    let comp = scenario.take_shared<composition::Composition<Share>>();
-    let rec = scenario.take_shared<recording::Recording<Share, Share>>();
+    let mut comp = scenario.take_shared<composition::Composition<Share>>();
+    let rec = scenario.take_shared<recording::Recording<RecordingShare, Share>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
+    let mut creator_shares = scenario.take_from_sender<Coin<RecordingShare>>();
+    let withdrawal = sui::balance::withdraw_funds_from_object<RecordingShare>(
+        comp.uid_mut(&comp_cap), SHARE_SUPPLY,
+    );
+    let grant = sui::balance::redeem_funds(withdrawal);
+    assert_eq!(grant.value(), SHARE_SUPPLY);
+    creator_shares.join(coin::from_balance(grant, scenario.ctx()));
+    assert_eq!(creator_shares.value(), SHARE_SUPPLY);
+    scenario.return_to_sender(creator_shares);
     destroy(comp);
     destroy(comp_cap);
+    let rec_cap = scenario.take_from_sender<recording::RecordingAdminCap<RecordingShare>>();
     destroy(rec_cap);
     destroy(rec);
-    destroy(shares);
-    destroy(currency);
-    destroy(comp_shares);
-    destroy(composition_currency);
     scenario.end();
 }
 
 #[test]
 fun composition_new_at_zero_rate_succeeds() {
-    let ctx = &mut tx_context::dummy();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
+    let mut scenario = new_scenario();
+    let mut currency = scenario.take_shared<Currency<Share>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
+    let ctx = scenario.ctx();
 
     // No floor: a generative composition with no authored work may carry a 0% rate.
     let (comp, cap, shares) = composition::new<Share>(
@@ -512,13 +580,14 @@ fun composition_new_at_zero_rate_succeeds() {
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
 
     assert_eq!(comp.royalty_rate().value(), 0);
 
     destroy(comp);
     destroy(cap);
     destroy(shares);
-    destroy(currency);
+    scenario.end();
 }
 
 /// Two recordings under one composition are independent objects with distinct
@@ -526,9 +595,10 @@ fun composition_new_at_zero_rate_succeeds() {
 /// so this is exactly the concurrency-safe path (no index, no `&mut` contention).
 #[test]
 fun recording_new_independent_ids_succeed() {
-    let mut scenario = test_scenario::begin(@0x0);
+    let mut scenario = new_scenario();
+    let mut composition_currency = scenario.take_shared<Currency<Share>>();
+    let composition_treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
     let ctx = scenario.ctx();
-    let (mut composition_currency, composition_treasury_cap) = test_share::currency_for_testing(ctx);
     let (comp, comp_cap, comp_shares) = composition::new<Share>(
         b"Song".to_string(),
         1500,
@@ -536,26 +606,32 @@ fun recording_new_independent_ids_succeed() {
         composition_treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(composition_currency);
     let composition_id = object::id(&comp).to_address();
     let mut composition_clock = sui::clock::create_for_testing(ctx);
     sui::clock::set_for_testing(&mut composition_clock, 4460);
     comp.publish(&comp_cap, &composition_clock);
     composition_clock.destroy_for_testing();
     sui::transfer::public_transfer(comp_cap, @0x0);
+    transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
     scenario.next_tx(@0x0);
     let comp = scenario.take_shared<composition::Composition<Share>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
+    let mut currency0 = scenario.take_shared<Currency<RecordingShare>>();
+    let treasury_cap0 = scenario.take_from_sender<TreasuryCap<RecordingShare>>();
+    let mut currency1 = scenario.take_shared<Currency<OtherRecordingShare>>();
+    let treasury_cap1 = scenario.take_from_sender<TreasuryCap<OtherRecordingShare>>();
     let ctx = scenario.ctx();
-    let (mut currency0, treasury_cap0) = test_share::currency_for_testing(ctx);
     let currency0_id = object::id(&currency0).to_address();
     let treasury_cap0_id = object::id(&treasury_cap0).to_address();
-    let (rec0, rec_cap0, shares0) = recording::new<Share, Share>(
+    let (rec0, rec_cap0, shares0) = recording::new<RecordingShare, Share>(
         &comp,
         &mut currency0,
         treasury_cap0,
         ctx,
     );
+    test_scenario::return_shared(currency0);
     let rec0_id = object::id(&rec0).to_address();
     let rec_cap0_id = object::id(&rec_cap0).to_address();
     let mut clock0 = sui::clock::create_for_testing(ctx);
@@ -564,15 +640,15 @@ fun recording_new_independent_ids_succeed() {
     let clock0_id = object::id(&clock0).to_address();
     clock0.destroy_for_testing();
 
-    let (mut currency1, treasury_cap1) = test_share::currency_for_testing(ctx);
     let currency1_id = object::id(&currency1).to_address();
     let treasury_cap1_id = object::id(&treasury_cap1).to_address();
-    let (rec1, rec_cap1, shares1) = recording::new<Share, Share>(
+    let (rec1, rec_cap1, shares1) = recording::new<OtherRecordingShare, Share>(
         &comp,
         &mut currency1,
         treasury_cap1,
         ctx,
     );
+    test_scenario::return_shared(currency1);
     let rec1_id = object::id(&rec1).to_address();
     let rec_cap1_id = object::id(&rec_cap1).to_address();
     let mut clock1 = sui::clock::create_for_testing(ctx);
@@ -582,10 +658,12 @@ fun recording_new_independent_ids_succeed() {
     clock1.destroy_for_testing();
 
     assert!(rec0_id != rec1_id);
-    let mut events = event::events_by_type<recording::RecordingPublishedEvent<Share, Share>>();
-    assert_eq!(events.length(), 2);
-    let event1 = events.pop_back();
-    let event0 = events.pop_back();
+    let mut events0 = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
+    let mut events1 = event::events_by_type<recording::RecordingPublishedEvent<OtherRecordingShare, Share>>();
+    assert_eq!(events0.length(), 1);
+    assert_eq!(events1.length(), 1);
+    let event0 = events0.pop_back();
+    let event1 = events1.pop_back();
     assert_production_recording_published_event(
         event0,
         rec0_id,
@@ -619,24 +697,22 @@ fun recording_new_independent_ids_succeed() {
     sui::transfer::public_transfer(comp_cap, @0x0);
     destroy(rec_cap0);
     destroy(shares0);
-    destroy(currency0);
     destroy(rec_cap1);
     destroy(shares1);
-    destroy(currency1);
     scenario.next_tx(@0x0);
     let comp = scenario.take_shared<composition::Composition<Share>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
     destroy(comp);
     destroy(comp_cap);
-    destroy(comp_shares);
-    destroy(composition_currency);
     scenario.end();
 }
 
 #[test, expected_failure(abort_code = 35, location = musicos::composition)] // EEmptyString
 fun composition_new_empty_title_aborts() {
-    let ctx = &mut tx_context::dummy();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
+    let mut scenario = new_scenario();
+    let mut currency = scenario.take_shared<Currency<Share>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
+    let ctx = scenario.ctx();
 
     let (comp, cap, shares) = composition::new<Share>(
         b"".to_string(),
@@ -645,17 +721,20 @@ fun composition_new_empty_title_aborts() {
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
 
     destroy(comp);
     destroy(cap);
     destroy(shares);
-    destroy(currency);
+    scenario.end();
 }
 
 #[test, expected_failure(abort_code = 33, location = musicos::composition)] // EMaxTitleLengthExceeded
 fun composition_new_title_too_long_aborts() {
-    let ctx = &mut tx_context::dummy();
-    let (mut currency, treasury_cap) = test_share::currency_for_testing(ctx);
+    let mut scenario = new_scenario();
+    let mut currency = scenario.take_shared<Currency<Share>>();
+    let treasury_cap = scenario.take_from_sender<TreasuryCap<Share>>();
+    let ctx = scenario.ctx();
 
     let (comp, cap, shares) = composition::new<Share>(
         test_helpers::long_string(301),
@@ -664,9 +743,10 @@ fun composition_new_title_too_long_aborts() {
         treasury_cap,
         ctx,
     );
+    test_scenario::return_shared(currency);
 
     destroy(comp);
     destroy(cap);
     destroy(shares);
-    destroy(currency);
+    scenario.end();
 }
