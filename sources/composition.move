@@ -7,7 +7,7 @@
 ///
 /// ### Key Features:
 ///
-/// - Share token initialization with fixed supply (10M tokens, 6 decimals)
+/// - Share token initialization with fixed supply (100M tokens, 6 decimals)
 /// - State machine: Initialized -> Published (embedded fields immutable after
 ///   publish; dynamic fields remain extensible via `uid_mut`)
 /// - Deterministic addresses via derived object pattern
@@ -148,7 +148,7 @@ public struct CompositionPublishedEvent<phantom CompositionShare> has copy, drop
 /// uncompetitive rate simply attracts no recordings. What rate is reasonable
 /// is a client-side concern; per-deal deviations settle as voluntary share
 /// transfers after recording creation.
-/// Initializes share tokens (10M supply, 6 decimals) and returns:
+/// Initializes share tokens (100M supply, 6 decimals) and returns:
 /// - The composition object
 /// - Admin capability for the owner
 /// - Initial share token balance

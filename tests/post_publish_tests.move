@@ -186,7 +186,7 @@ fun publish_titled_release(
     assert!(!events.is_empty());
     let (event_rel_id, event_cap_id, event_clock_id, title_bytes, published_at_ms,
         assigned_track_count, shared_after,
-        registry_id, release_digest, nonce) =
+        registry_id, release_digest, nonce, track_allocations) =
         release::release_published_event_fields(events.pop_back());
     assert_eq!(event_rel_id, rel_id.to_address());
     assert_eq!(event_cap_id, object::id(&cap).to_address());
@@ -198,6 +198,7 @@ fun publish_titled_release(
     assert_eq!(registry_id, @0x0);
     assert_eq!(release_digest, vector[]);
     assert_eq!(nonce, 0);
+    assert_eq!(track_allocations.length(), 1);
 
     (cap, rel_id)
 }

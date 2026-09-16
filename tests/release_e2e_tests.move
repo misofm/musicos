@@ -101,6 +101,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     let rec = scenario.take_shared<Recording<RecordingShare, CompositionShare>>();
     let registry = scenario.take_shared<ReleaseRegistry>();
     let recording_id = object::id(&rec);
+    let composition_id = object::id(&comp);
     let predicted_release_id = registry.derive_target_release_id(
         vector[recording_id],
         vector[10000u64],
@@ -142,6 +143,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
         event_registry_id,
         release_digest,
         event_nonce,
+        track_allocations,
     ) = release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
     assert_eq!(event_cap_id, object::id(&rel_cap).to_address());
@@ -153,6 +155,12 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(event_registry_id, registry_id.to_address());
     assert_eq!(release_digest, expected_digest(vector[recording_id], vector[10000], NONCE));
     assert_eq!(event_nonce, NONCE);
+    assert_eq!(track_allocations.length(), 1);
+    let (event_composition, event_recording, event_split) =
+        release::track_allocation_fields(track_allocations[0]);
+    assert_eq!(event_recording, recording_id.to_address());
+    assert_eq!(event_composition, composition_id.to_address());
+    assert_eq!(event_split, 10000);
 
     destroy(rel_cap);
     test_scenario::return_shared(registry);

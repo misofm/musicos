@@ -172,6 +172,14 @@ public enum ReleaseState has copy, drop, store {
 
 // === Events ===
 
+/// One ordered allocation entry; vector position is the track position.
+/// Fixed-width fields keep the complete financial receipt bounded to 66 bytes per track.
+public struct TrackAllocation has copy, drop {
+    composition_id: address,
+    recording_id: address,
+    split_bps: u16,
+}
+
 /// Emitted once when a release is published.
 public struct ReleasePublishedEvent has copy, drop {
     release_id: address,
@@ -184,6 +192,8 @@ public struct ReleasePublishedEvent has copy, drop {
     registry_id: address,
     release_digest: vector<u8>,
     nonce: u256,
+    /// Complete ordered allocation, including duplicates and zero splits.
+    track_allocations: vector<TrackAllocation>,
 }
 
 /// Emitted once when package initialization creates the canonical shared
@@ -296,7 +306,7 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
             nonce,
         } => {
             // Assert that the tracks are assigned to the release.
-            self.assert_track_assignments();
+            let track_allocations = self.assign_tracks();
 
             let timestamp_ms = clock.timestamp_ms();
 
@@ -322,6 +332,7 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
                 registry_id,
                 release_digest,
                 nonce,
+                track_allocations,
             });
         },
         _ => abort ENotInitializedState,
@@ -395,8 +406,17 @@ fun calculate_release_digest(
 }
 
 /// Assigns all tracks to this release, verifying each track's target release ID matches.
-fun assert_track_assignments(self: &mut Release) {
-    self.tracks.do_mut!(|track| track.assign(&self.id));
+fun assign_tracks(self: &mut Release): vector<TrackAllocation> {
+    let mut allocations = vector[];
+    self.tracks.do_mut!(|track| {
+        track.assign(&self.id);
+        allocations.push_back(TrackAllocation {
+            composition_id: track.composition_id().to_address(),
+            recording_id: track.recording_id().to_address(),
+            split_bps: track.split_bps().value(),
+        });
+    });
+    allocations
 }
 
 // === Test Functions ===
@@ -439,7 +459,7 @@ public fun release_registry_created_event_fields(
 #[test_only]
 public fun release_published_event_fields(
     event: ReleasePublishedEvent,
-): (address, address, address, vector<u8>, u64, u64, bool, address, vector<u8>, u256) {
+): (address, address, address, vector<u8>, u64, u64, bool, address, vector<u8>, u256, vector<TrackAllocation>) {
     let ReleasePublishedEvent {
         release_id,
         release_admin_cap_id,
@@ -451,6 +471,7 @@ public fun release_published_event_fields(
         registry_id,
         release_digest,
         nonce,
+        track_allocations,
     } = event;
     (
         release_id,
@@ -463,6 +484,7 @@ public fun release_published_event_fields(
         registry_id,
         release_digest,
         nonce,
+        track_allocations,
     )
 }
 
@@ -516,4 +538,10 @@ public fun new_for_testing(
     };
 
     (release, release_admin_cap)
+}
+
+#[test_only]
+public fun track_allocation_fields(allocation: TrackAllocation): (address, address, u16) {
+    let TrackAllocation { composition_id, recording_id, split_bps } = allocation;
+    (composition_id, recording_id, split_bps)
 }

@@ -41,8 +41,10 @@ rightsholders' consent.
 
 ### Lifecycle
 
-Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. `Initialized` carries the temporary creation metadata needed by `publish`; because the objects are key-only and cannot escape the creating transaction, only the final `Published` transition emits a lifecycle event. Each Published event is self-contained with object/capability linkage, creation provenance and economics, bounded immutable fields and timestamps. Release publication carries track count
-and its existing digest; read the immutable Release for ordered tracks and splits.
+Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. `Initialized` carries the temporary creation metadata needed by `publish`; because the objects are key-only and cannot escape the creating transaction, only the final `Published` transition emits a lifecycle event. Each Published event is self-contained with object/capability linkage, creation provenance and economics, bounded immutable fields and timestamps. Release publication carries its digest and one ordered `track_allocations` vector of
+composition IDs, recording IDs, and `u16` split BPS. Duplicate recordings and zero
+splits retain their positions; indexers need no object reads to reconstruct the
+allocation. Each entry is 66 BCS bytes (at most 16,832 bytes for the vector).
 
 ### Ownership
 
