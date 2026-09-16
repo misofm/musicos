@@ -3,7 +3,7 @@
 
 /// Tests for the production `composition::new` and `recording::new`
 /// constructors — the real entry points that wire `share::initialize`
-/// (fixed 10M supply, consumed treasury cap) and, for recordings, the fresh
+/// (fixed 100M supply, consumed treasury cap) and, for recordings, the fresh
 /// `object::new` id plus the read-only `&Composition` royalty snapshot.
 ///
 /// None of these constructors ever share, transfer, or otherwise dispose of
@@ -22,8 +22,8 @@ use std::unit_test::{assert_eq, destroy};
 use sui::event;
 use sui::test_scenario;
 
-/// 10,000,000.000000 tokens at 6 decimals — must match share::SUPPLY.
-const SHARE_SUPPLY: u64 = 10_000_000_000_000;
+/// 100,000,000.000000 tokens at 6 decimals — must match share::SUPPLY.
+const SHARE_SUPPLY: u64 = 100_000_000_000_000;
 
 fun assert_production_recording_published_event(
     event: recording::RecordingPublishedEvent<Share, Share>,
@@ -214,9 +214,9 @@ fun recording_new_settles_composition_cut() {
     );
 
     // The creator keeps the full supply minus the composition's royalty-rate
-    // cut (15% of 10M), which `recording::new` splits off and sends to the
+    // cut (15% of 100M), which `recording::new` splits off and sends to the
     // composition's address.
-    assert_eq!(shares.value(), SHARE_SUPPLY - 1_500_000_000_000);
+    assert_eq!(shares.value(), SHARE_SUPPLY - 15_000_000_000_000);
     assert_eq!(rec.composition_id(), object::id(&comp));
     assert!(rec.is_initialized_state());
     assert!(!rec.is_published_state());
@@ -264,8 +264,8 @@ fun recording_new_settles_composition_cut() {
     assert_eq!(rate_bps, 1500);
     assert_eq!(supply_before, 0);
     assert_eq!(shares_before_grant, SHARE_SUPPLY);
-    assert_eq!(composition_shares_granted, 1_500_000_000_000);
-    assert_eq!(shares_returned, SHARE_SUPPLY - 1_500_000_000_000);
+    assert_eq!(composition_shares_granted, 15_000_000_000_000);
+    assert_eq!(shares_returned, SHARE_SUPPLY - 15_000_000_000_000);
     assert_eq!(decimals, 6);
     assert!(fixed_after);
     assert!(funds_sent);
@@ -596,8 +596,8 @@ fun recording_new_independent_ids_succeed() {
         currency0_id,
         treasury_cap0_id,
         1500,
-        1_500_000_000_000,
-        SHARE_SUPPLY - 1_500_000_000_000,
+        15_000_000_000_000,
+        SHARE_SUPPLY - 15_000_000_000_000,
         true,
     );
     assert_production_recording_published_event(
@@ -610,8 +610,8 @@ fun recording_new_independent_ids_succeed() {
         currency1_id,
         treasury_cap1_id,
         1500,
-        1_500_000_000_000,
-        SHARE_SUPPLY - 1_500_000_000_000,
+        15_000_000_000_000,
+        SHARE_SUPPLY - 15_000_000_000_000,
         true,
     );
 

@@ -7,7 +7,7 @@
 ///
 /// ### Key Features:
 ///
-/// - Share token initialization with fixed supply (10M tokens, 6 decimals)
+/// - Share token initialization with fixed supply (100M tokens, 6 decimals)
 /// - State machine: Initialized -> Published (embedded fields immutable after
 ///   publish; dynamic fields remain extensible via `uid_mut`, e.g. masters,
 ///   and credits/attribution attached by the credits extension)
@@ -167,7 +167,7 @@ public struct RecordingPublishedEvent<phantom RecordingShare, phantom Compositio
 
 /// Creates a new recording for a composition.
 ///
-/// Initializes share tokens (10M supply, 6 decimals), then splits the
+/// Initializes share tokens (100M supply, 6 decimals), then splits the
 /// composition's royalty-rate worth of those shares off the freshly minted
 /// supply and `send_funds`es them to the composition's address. This settles
 /// the composition's cut as cap-table ownership: the composition literally
