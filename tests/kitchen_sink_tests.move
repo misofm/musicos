@@ -101,7 +101,7 @@ fun test_release_rich_event_arrays_at_max_tracks() {
     destroy(rel_cap);
     let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
     assert_eq!(published_events.length(), 1);
-    assert!(sui::bcs::to_bytes(&published_events[0]).length() < 1024);
+    assert!(sui::bcs::to_bytes(&published_events[0]).length() < 18000);
     let (
         event_release_id,
         _cap_id,
@@ -113,11 +113,21 @@ fun test_release_rich_event_arrays_at_max_tracks() {
         _registry_id,
         _digest,
         event_nonce,
+        track_allocations,
     ) = release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
     assert_eq!(assigned_track_count, 255);
     assert!(shared_after);
     assert_eq!(event_nonce, nonce);
+    assert_eq!(track_allocations.length(), 255);
+    assert_eq!(sui::bcs::to_bytes(&track_allocations).length(), 2 + 255 * 66);
+    255u64.do!(|index| {
+        let (composition_id, recording_id, split_bps) =
+            release::track_allocation_fields(track_allocations[index]);
+        assert_eq!(composition_id, composition_ids[index].to_address());
+        assert_eq!(recording_id, recording_ids[index].to_address());
+        assert_eq!(split_bps as u64, track_split_bps[index]);
+    });
 
     destroy(registry);
 }
