@@ -96,7 +96,7 @@ fun publish_recording(
 ): recording::RecordingAdminCap<RecordingShare> {
     let ctx = scenario.ctx();
     let composition_id = test_helpers::fake_id(ctx);
-    let (rec, cap) = recording::new_for_testing<RecordingShare, CompositionShare>(
+    let (rec, cap) = recording::new_for_testing<RecordingShare>(
         composition_id,
         ctx,
     );
@@ -108,7 +108,7 @@ fun publish_recording(
     clock.destroy_for_testing();
 
     // Event payload captures the recording/composition linkage and shared clock.
-    let mut events = event::events_by_type<RecordingPublishedEvent<RecordingShare, CompositionShare>>();
+    let mut events = event::events_by_type<RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
     let (
         event_rec_id,
@@ -259,7 +259,7 @@ fun recording_publish_twice_aborts() {
     let cap = publish_recording(&mut scenario);
 
     scenario.next_tx(OWNER);
-    let rec = scenario.take_shared<Recording<RecordingShare, CompositionShare>>();
+    let rec = scenario.take_shared<Recording<RecordingShare>>();
     let clock = sui::clock::create_for_testing(scenario.ctx());
     rec.publish(&cap, &clock);
 
@@ -293,7 +293,7 @@ fun recording_uid_mut_works_after_publish() {
     let cap = publish_recording(&mut scenario);
 
     scenario.next_tx(OWNER);
-    let mut rec = scenario.take_shared<Recording<RecordingShare, CompositionShare>>();
+    let mut rec = scenario.take_shared<Recording<RecordingShare>>();
     assert!(rec.is_published_state());
     assert!(!rec.is_initialized_state());
     dynamic_field::add(rec.uid_mut(&cap), b"master", 7u64);

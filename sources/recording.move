@@ -45,16 +45,23 @@
 /// expires: integrators should model the cap holder as able to mutate or
 /// delete any extension data, forever.
 ///
-/// The recording carries its parent composition's identity two ways. The
-/// `CompositionShare` phantom type parameter is the durable identity (a share
-/// currency is published independently of musicos and survives a fresh
-/// republish, whereas an object ID does not) and makes the
-/// recording↔composition lineage compile-time enforced wherever the two meet.
-/// The embedded `composition_id` is the address-level handle: Move cannot
-/// chase a type (or an ID) to an object, so on-chain consumers holding only
-/// `&Recording` — or a bare `Track` — could not otherwise reach the
-/// composition at all. Both are set at creation and immutable, so they cannot
-/// diverge.
+/// The recording's link to its parent composition is the embedded
+/// `composition_id`: set from the `&Composition` passed to `new`, immutable
+/// thereafter, and the handle through which consumers holding only
+/// `&Recording` — or a bare `Track` — reach the composition (and, through it,
+/// the composition's own share type). `Recording` deliberately carries no
+/// `CompositionShare` type parameter. The composition share type is already a
+/// function of the recording share type — `new` consumes the recording
+/// share's `TreasuryCap`, so each `RecordingShare` backs exactly one
+/// recording, which has exactly one composition — and a phantom would never
+/// be checked against anything after `new`: an ID can be resolved off-chain
+/// and checked on-chain against a supplied object, whereas a type can be
+/// neither, so the pairing is a data fact either way. Keeping
+/// the type single-parameter also lets a client locate a recording by the
+/// `Recording<R>` type filter from its share type alone (Sui type filters
+/// cannot wildcard one type argument). Code that must establish that a
+/// specific `Recording` and `Composition` go together compares
+/// `composition_id()` with the composition's object ID.
 ///
 /// A recording is its own freshly-created object (`object::new`), not a derived
 /// child of its composition: `recording::new` takes a read-only `&Composition`
@@ -81,18 +88,18 @@ const ENotInitializedState: u64 = 10;
 // === Structs ===
 
 /// An audio recording of a composition. The `RecordingShare` phantom links to
-/// this recording's own share token; the `CompositionShare` phantom is the
-/// durable identity of the parent composition (its share type).
-public struct Recording<phantom RecordingShare, phantom CompositionShare> has key {
+/// this recording's own share token; the parent composition is linked by the
+/// embedded `composition_id` alone (see the module doc for why there is no
+/// `CompositionShare` type parameter).
+public struct Recording<phantom RecordingShare> has key {
     /// Unique identifier for this recording.
     id: UID,
     /// Current lifecycle state.
     state: RecordingState,
-    /// Object ID of the parent composition. The address-level counterpart of
-    /// the `CompositionShare` phantom, set from the `&Composition` passed to
-    /// `new` (the shared phantom proves the pairing). An identity handle —
-    /// not a revenue routing target: the composition is paid through its
-    /// recording-share ownership, settled at creation.
+    /// Object ID of the parent composition — the recording's one link to it,
+    /// set from the `&Composition` passed to `new` and immutable thereafter. An
+    /// identity handle — not a revenue routing target: the composition is
+    /// paid through its recording-share ownership, settled at creation.
     composition_id: ID,
 }
 
@@ -100,11 +107,11 @@ public struct Recording<phantom RecordingShare, phantom CompositionShare> has ke
 /// Initialized when a recording is registered and transferred to the owner.
 /// Address is derived from the recording for client-side discoverability.
 ///
-/// Parameterized only by `RecordingShare` (not `CompositionShare`): the share
-/// type already uniquely identifies the recording, and the cap authorizes
-/// recording-scoped operations that have no bearing on the parent composition.
-/// Keeping it single-param stops the composition identity from contaminating
-/// every place a cap is held or passed.
+/// Parameterized by `RecordingShare` alone, like the recording itself: the
+/// share type uniquely identifies the recording (`new` consumes the share's
+/// `TreasuryCap`, so one share type backs at most one recording), and the cap
+/// authorizes recording-scoped operations that have no bearing on the parent
+/// composition — so the composition's identity has no place in the cap's type.
 public struct RecordingAdminCap<phantom RecordingShare> has key, store {
     /// Unique identifier for this capability.
     id: UID,
@@ -141,8 +148,10 @@ public enum RecordingState has copy, drop, store {
 
 // === Events ===
 
-/// Emitted once when a recording is published.
-public struct RecordingPublishedEvent<phantom RecordingShare, phantom CompositionShare> has copy, drop {
+/// Emitted once when a recording is published. Typed by `RecordingShare`
+/// only, like the recording; the parent composition is carried as the
+/// `composition_id` payload field.
+public struct RecordingPublishedEvent<phantom RecordingShare> has copy, drop {
     recording_id: address,
     composition_id: address,
     recording_admin_cap_id: address,
@@ -190,7 +199,9 @@ public struct RecordingPublishedEvent<phantom RecordingShare, phantom Compositio
 /// an intra-transaction ordering, never across transactions.
 ///
 /// Returns:
-/// - The recording object (typed to its parent composition's `CompositionShare`)
+/// - The recording object, its `composition_id` set to `composition`'s id
+///   (`CompositionShare` is a parameter of this function only — it does not
+///   appear in the recording's type)
 /// - Admin capability for the owner
 /// - The creator's remaining share balance (full supply minus the
 ///   composition's cut)
@@ -200,7 +211,7 @@ public fun new<RecordingShare, CompositionShare>(
     mut share_treasury_cap: TreasuryCap<RecordingShare>,
     ctx: &mut TxContext,
 ): (
-    Recording<RecordingShare, CompositionShare>,
+    Recording<RecordingShare>,
     RecordingAdminCap<RecordingShare>,
     Balance<RecordingShare>,
 ) {
@@ -216,9 +227,10 @@ public fun new<RecordingShare, CompositionShare>(
     // composition. The composition is read-only (`&Composition`) — taken only to
     // snapshot its royalty rate and address — so concurrent recordings under the
     // same composition neither contend on its shared-object version nor collide
-    // on an index. The composition↔recording link rides solely on the
-    // `CompositionShare` phantom (durable identity).
-    let mut recording = Recording<RecordingShare, CompositionShare> {
+    // on an index. The composition↔recording link is the embedded
+    // `composition_id`, taken here from a real `&Composition` and never
+    // rewritten — the recording's type says nothing about its composition.
+    let mut recording = Recording<RecordingShare> {
         id: object::new(ctx),
         state: RecordingState::Initialized {
             share_currency_id,
@@ -290,8 +302,8 @@ public fun new<RecordingShare, CompositionShare>(
 ///
 /// Note: core enforces no attribution requirement — credits live in the credits
 /// extension and may be attached before or after publish via `uid_mut`.
-public fun publish<RecordingShare, CompositionShare>(
-    mut self: Recording<RecordingShare, CompositionShare>,
+public fun publish<RecordingShare>(
+    mut self: Recording<RecordingShare>,
     cap: &RecordingAdminCap<RecordingShare>,
     clock: &Clock,
 ) {
@@ -321,7 +333,7 @@ public fun publish<RecordingShare, CompositionShare>(
 
             transfer::share_object(self);
 
-            emit(RecordingPublishedEvent<RecordingShare, CompositionShare> {
+            emit(RecordingPublishedEvent<RecordingShare> {
                 recording_id,
                 composition_id,
                 recording_admin_cap_id,
@@ -348,20 +360,16 @@ public fun publish<RecordingShare, CompositionShare>(
 
 // === View Functions ===
 
-/// Returns the object ID of the parent composition. An identity/membership
-/// handle (the address-level counterpart of the `CompositionShare` phantom) —
-/// not a revenue routing target: the composition is paid via its
-/// recording-share ownership.
-public fun composition_id<RecordingShare, CompositionShare>(
-    self: &Recording<RecordingShare, CompositionShare>,
-): ID {
+/// Returns the object ID of the parent composition — the recording's link to
+/// it, set from a real `&Composition` in `new` and immutable since. An
+/// identity/membership handle, not a revenue routing target: the composition
+/// is paid via its recording-share ownership.
+public fun composition_id<RecordingShare>(self: &Recording<RecordingShare>): ID {
     self.composition_id
 }
 
 /// Returns a reference to the recording's UID for reading dynamic fields.
-public fun uid<RecordingShare, CompositionShare>(
-    self: &Recording<RecordingShare, CompositionShare>,
-): &UID {
+public fun uid<RecordingShare>(self: &Recording<RecordingShare>): &UID {
     &self.id
 }
 
@@ -371,8 +379,8 @@ public fun uid<RecordingShare, CompositionShare>(
 /// admin-mutable after publish; only the embedded fields are frozen. The
 /// reference is root over every dynamic field on the object, including
 /// fields attached by other extensions.
-public fun uid_mut<RecordingShare, CompositionShare>(
-    self: &mut Recording<RecordingShare, CompositionShare>,
+public fun uid_mut<RecordingShare>(
+    self: &mut Recording<RecordingShare>,
     _: &RecordingAdminCap<RecordingShare>,
 ): &mut UID {
     &mut self.id
@@ -387,16 +395,12 @@ public fun uid_mut<RecordingShare, CompositionShare>(
 // them to verify the transition itself.
 
 #[test_only]
-public fun is_initialized_state<RecordingShare, CompositionShare>(
-    self: &Recording<RecordingShare, CompositionShare>,
-): bool {
+public fun is_initialized_state<RecordingShare>(self: &Recording<RecordingShare>): bool {
     match (self.state) { RecordingState::Initialized { .. } => true, _ => false }
 }
 
 #[test_only]
-public fun is_published_state<RecordingShare, CompositionShare>(
-    self: &Recording<RecordingShare, CompositionShare>,
-): bool {
+public fun is_published_state<RecordingShare>(self: &Recording<RecordingShare>): bool {
     match (self.state) { RecordingState::Published(_) => true, _ => false }
 }
 
@@ -406,11 +410,11 @@ public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
 }
 
 #[test_only]
-public fun new_for_testing<RecordingShare, CompositionShare>(
+public fun new_for_testing<RecordingShare>(
     composition_id: ID,
     ctx: &mut TxContext,
-): (Recording<RecordingShare, CompositionShare>, RecordingAdminCap<RecordingShare>) {
-    let mut recording = Recording<RecordingShare, CompositionShare> {
+): (Recording<RecordingShare>, RecordingAdminCap<RecordingShare>) {
+    let mut recording = Recording<RecordingShare> {
         id: object::new(ctx),
         state: RecordingState::Initialized {
             share_currency_id: @0x0,
@@ -440,8 +444,8 @@ public fun new_for_testing<RecordingShare, CompositionShare>(
 /// event's field is module-private, so tests in another module need this
 /// accessor to assert the full payload rather than just "an event fired".
 #[test_only]
-public fun recording_published_event_fields<RecordingShare, CompositionShare>(
-    event: RecordingPublishedEvent<RecordingShare, CompositionShare>,
+public fun recording_published_event_fields<RecordingShare>(
+    event: RecordingPublishedEvent<RecordingShare>,
 ): (address, address, address, address, u64, bool, address, address, address, u16, u64, u64, u64, u64, u8, bool, bool, address) {
     let RecordingPublishedEvent {
         recording_id,

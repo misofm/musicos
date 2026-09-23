@@ -10,10 +10,10 @@ const OWNER: address = @0xA1;
 
 /// Helper to create a test recording.
 fun new_test_recording(ctx: &mut TxContext): (
-    recording::Recording<RecordingShare, CompositionShare>,
+    recording::Recording<RecordingShare>,
     recording::RecordingAdminCap<RecordingShare>,
 ) {
-    recording::new_for_testing<RecordingShare, CompositionShare>(test_helpers::fake_id(ctx), ctx)
+    recording::new_for_testing<RecordingShare>(test_helpers::fake_id(ctx), ctx)
 }
 
 // === Publish ===
@@ -31,7 +31,7 @@ fun test_publish_recording() {
     clock.destroy_for_testing();
 
     scenario.next_tx(OWNER);
-    let rec = scenario.take_shared<Recording<RecordingShare, CompositionShare>>();
+    let rec = scenario.take_shared<Recording<RecordingShare>>();
     assert!(rec.is_published_state());
     test_scenario::return_shared(rec);
 

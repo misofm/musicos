@@ -86,7 +86,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     // === Tx 2 (ARTIST): create and publish a recording of it ===
     scenario.next_tx(ARTIST);
     let comp = scenario.take_shared<Composition<CompositionShare>>();
-    let (rec, rec_cap) = recording::new_for_testing<RecordingShare, CompositionShare>(
+    let (rec, rec_cap) = recording::new_for_testing<RecordingShare>(
         object::id(&comp),
         scenario.ctx(),
     );
@@ -98,7 +98,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     // === Tx 3 (ARTIST): consent to the predicted release id via track::new ===
     scenario.next_tx(ARTIST);
     let comp = scenario.take_shared<Composition<CompositionShare>>();
-    let rec = scenario.take_shared<Recording<RecordingShare, CompositionShare>>();
+    let rec = scenario.take_shared<Recording<RecordingShare>>();
     let registry = scenario.take_shared<ReleaseRegistry>();
     let recording_id = object::id(&rec);
     let composition_id = object::id(&comp);
@@ -198,7 +198,7 @@ fun publish_aborts_when_track_targets_a_different_release() {
         ROYALTY_RATE_BPS,
         scenario.ctx(),
     );
-    let (rec, rec_cap) = recording::new_for_testing<RecordingShare, CompositionShare>(
+    let (rec, rec_cap) = recording::new_for_testing<RecordingShare>(
         object::id(&_comp),
         scenario.ctx(),
     );

@@ -41,7 +41,7 @@ fun new_scenario(): Scenario {
 }
 
 fun assert_production_recording_published_event<RecordingShare>(
-    event: recording::RecordingPublishedEvent<RecordingShare, Share>,
+    event: recording::RecordingPublishedEvent<RecordingShare>,
     expected_recording_id: address,
     expected_composition_id: address,
     expected_cap_id: address,
@@ -254,7 +254,7 @@ fun recording_new_settles_composition_cut() {
     assert_eq!(rec.composition_id(), object::id(&comp));
     assert!(rec.is_initialized_state());
     assert!(!rec.is_published_state());
-    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>().length(), 0);
+    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
     let recording_cap_id = object::id(&rec_cap).to_address();
@@ -264,7 +264,7 @@ fun recording_new_settles_composition_cut() {
     let clock_id = object::id(&clock).to_address();
     clock.destroy_for_testing();
 
-    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
+    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
     let (
         event_recording_id,
@@ -311,7 +311,7 @@ fun recording_new_settles_composition_cut() {
     transfer::public_transfer(coin::from_balance(shares, scenario.ctx()), @0x0);
     scenario.next_tx(@0x0);
     let mut comp = scenario.take_shared<composition::Composition<Share>>();
-    let rec = scenario.take_shared<recording::Recording<RecordingShare, Share>>();
+    let rec = scenario.take_shared<recording::Recording<RecordingShare>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
     let rec_cap = scenario.take_from_sender<recording::RecordingAdminCap<RecordingShare>>();
     destroy(rec);
@@ -373,7 +373,7 @@ fun recording_new_zero_rate_grants_no_shares() {
     // split/send is skipped, so the creator retains the entire supply.
     assert_eq!(shares.value(), SHARE_SUPPLY);
 
-    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>().length(), 0);
+    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
     let recording_cap_id = object::id(&rec_cap).to_address();
@@ -383,7 +383,7 @@ fun recording_new_zero_rate_grants_no_shares() {
     let clock_id = object::id(&clock).to_address();
     clock.destroy_for_testing();
 
-    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
+    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
     let (
         event_recording_id,
@@ -430,7 +430,7 @@ fun recording_new_zero_rate_grants_no_shares() {
     transfer::public_transfer(rec_cap, @0x0);
     scenario.next_tx(@0x0);
     let mut comp = scenario.take_shared<composition::Composition<Share>>();
-    let rec = scenario.take_shared<recording::Recording<RecordingShare, Share>>();
+    let rec = scenario.take_shared<recording::Recording<RecordingShare>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
     let mut creator_shares = scenario.take_from_sender<Coin<RecordingShare>>();
     let withdrawal = sui::balance::withdraw_funds_from_object<RecordingShare>(
@@ -489,7 +489,7 @@ fun recording_new_full_rate_grants_full_supply() {
     test_scenario::return_shared(currency);
     assert_eq!(shares.value(), 0);
 
-    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>().length(), 0);
+    assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
     let recording_cap_id = object::id(&rec_cap).to_address();
@@ -499,7 +499,7 @@ fun recording_new_full_rate_grants_full_supply() {
     let clock_id = object::id(&clock).to_address();
     clock.destroy_for_testing();
 
-    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
+    let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
     let (
         event_recording_id,
@@ -546,7 +546,7 @@ fun recording_new_full_rate_grants_full_supply() {
     transfer::public_transfer(rec_cap, @0x0);
     scenario.next_tx(@0x0);
     let mut comp = scenario.take_shared<composition::Composition<Share>>();
-    let rec = scenario.take_shared<recording::Recording<RecordingShare, Share>>();
+    let rec = scenario.take_shared<recording::Recording<RecordingShare>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
     let mut creator_shares = scenario.take_from_sender<Coin<RecordingShare>>();
     let withdrawal = sui::balance::withdraw_funds_from_object<RecordingShare>(
@@ -658,8 +658,8 @@ fun recording_new_independent_ids_succeed() {
     clock1.destroy_for_testing();
 
     assert!(rec0_id != rec1_id);
-    let mut events0 = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare, Share>>();
-    let mut events1 = event::events_by_type<recording::RecordingPublishedEvent<OtherRecordingShare, Share>>();
+    let mut events0 = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
+    let mut events1 = event::events_by_type<recording::RecordingPublishedEvent<OtherRecordingShare>>();
     assert_eq!(events0.length(), 1);
     assert_eq!(events1.length(), 1);
     let event0 = events0.pop_back();

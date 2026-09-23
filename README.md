@@ -81,13 +81,15 @@ sui move test
 
 ## Deployment
 
-> **Unreleased changes:** this source places the canonical `ReleaseRegistry`
-> directly in `musicos::release` and makes it the only production derivation
-> parent for `release::new`. This is an upgrade-incompatible change that will
-> ship as a fresh publication.
+> **Unreleased changes:** this source drops the `CompositionShare` type
+> parameter from `Recording` (now `Recording<RecordingShare>`) and from
+> `RecordingPublishedEvent`; the composition link is carried by the
+> `composition_id` field alone. This is an upgrade-incompatible change that will
+> require a fresh publication, superseding the Mainnet and Testnet packages
+> currently recorded in `Published.toml`.
 
-The current Testnet deployment is immutable: it was published and its
-`UpgradeCap` destroyed atomically.
+The current Mainnet and Testnet deployments are immutable: each was published
+and its `UpgradeCap` destroyed atomically.
 
 [`Published.toml`](./Published.toml) records this package's publish metadata
 and is what dependent Move packages build against; treat it as the canonical

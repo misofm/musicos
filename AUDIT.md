@@ -13,6 +13,23 @@
 > the pre-launch audit, misofm/audit#1. This document records the 2026-08-23
 > audit at the revisions above.
 
+> **Design change (2026-09-23, unreleased):** `Recording` is now
+> `Recording<RS>` — the `CompositionShare` phantom is dropped from the object
+> and from `RecordingPublishedEvent`, whose `composition_id` payload field is
+> the composition link (`recording::new` still takes `&Composition<CS>` and
+> sets it; callers pairing a recording with a composition compare
+> `composition_id()` with the composition's object ID). The
+> uniqueness claim under "Extension authorization model" below, "a
+> `Recording<RS, CS>` can be created at most once per `RS`", now reads
+> `Recording<RS>`; its argument is unchanged, since it rests on
+> `TreasuryCap<RS>` consumption alone. This supersedes the prior dispositions
+> to keep the `CompositionShare` event dimension — recorded outside this
+> repository, in the broader workspace's
+> `audits/v1-event-final-20260916/REPORT.md:9` and
+> `audits/engineering-skills-20260916/REVIEW.md:369` — with `composition_id`
+> in the payload as the replacement. Otherwise this document still records
+> the 2026-08-23 audit, and its line references are to that revision.
+
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
 their admin capabilities, and the extension authorization contract that all
 `musicos-extensions/*` packages build on. Verdict: **safe to publish — no

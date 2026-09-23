@@ -53,13 +53,13 @@ fun composition_and_recording(
 ): (
     composition::Composition<CompositionShare>,
     composition::CompositionAdminCap<CompositionShare>,
-    recording::Recording<RecordingShare, CompositionShare>,
+    recording::Recording<RecordingShare>,
     recording::RecordingAdminCap<RecordingShare>,
 ) {
     let (comp, comp_cap) =
         composition::new_for_testing<CompositionShare>(b"Song".to_string(), 1500, ctx);
     let (rec, rec_cap) =
-        recording::new_for_testing<RecordingShare, CompositionShare>(object::id(&comp), ctx);
+        recording::new_for_testing<RecordingShare>(object::id(&comp), ctx);
     (comp, comp_cap, rec, rec_cap)
 }
 

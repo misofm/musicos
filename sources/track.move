@@ -6,8 +6,9 @@
 ///
 /// A `Track` is the minimal positioned (recording, revenue-share) pair:
 /// - `recording_id` — the routing target for the track's revenue, and the
-///   handle through which all other metadata (title, cover art, and the
-///   recording/composition share-type identities) is reached.
+///   handle through which all other metadata (title, cover art, the
+///   recording's share-type identity, and — via the recording's
+///   `composition_id` — the composition's) is reached.
 /// - `composition_id` — the identity of the recording's underlying work, so
 ///   the composition–recording–release graph is walkable on-chain from the
 ///   release alone. Move cannot chase an ID to an object, so this edge is
@@ -51,7 +52,8 @@ public struct Track has drop, store {
     composition_id: ID,
     /// ID of the recording on this track. The routing target for the track's
     /// revenue; also the handle a consumer uses to fetch the recording (whose
-    /// type carries the recording and composition share-type identities).
+    /// type carries its share-type identity, and whose `composition_id` leads
+    /// on to the composition and its share type).
     recording_id: ID,
     /// This track's share of the release's revenue, in basis points. All
     /// tracks in a release sum to 100%. The composition's cut is settled as
@@ -86,11 +88,12 @@ public enum TrackState has copy, drop, store {
 /// pending from dead. Pre-publish observability is the responsibility of
 /// whatever wraps the track (see below).
 ///
-/// The recording↔composition pairing is compile-time enforced by the
-/// recording's `CompositionShare` phantom, and its address-level counterpart
-/// is embedded on the recording at creation — so the composition id is copied
-/// from the `&Recording` argument with no `Composition` argument and no
-/// runtime check needed.
+/// The composition id is copied from the `&Recording` argument, with no
+/// `Composition` argument and no runtime check: `recording::new` sets
+/// `composition_id` from a real `&Composition` and the field is immutable
+/// thereafter, so the recording is the authority on its own composition — a
+/// caller-supplied `Composition` could only ever agree with it or be
+/// rejected, and there is nothing for a track to add.
 ///
 /// ### What creating a track consents to
 ///
@@ -113,14 +116,14 @@ public enum TrackState has copy, drop, store {
 /// identity. Withdrawal, expiry, and rejection are then whatever that
 /// wrapping extension encodes — visible in its type, not in core.
 ///
-/// `recording` compile-time-binds the `RecordingShare`/`CompositionShare`
-/// phantom pairing, and is read for its own id and its embedded composition
-/// id: the monomorphic `Track` must store both *addresses* — the recording's
-/// for revenue routing, the composition's for graph reachability — and an
-/// address cannot come from a phantom.
-public fun new<RecordingShare, CompositionShare>(
+/// `recording` shares its `RecordingShare` with the cap, which binds cap to
+/// recording at compile time, and is read for its own id and its embedded
+/// composition id: the monomorphic `Track` must store both *addresses* — the
+/// recording's for revenue routing, the composition's for graph reachability
+/// — and an address cannot come from a phantom.
+public fun new<RecordingShare>(
     _: &RecordingAdminCap<RecordingShare>,
-    recording: &Recording<RecordingShare, CompositionShare>,
+    recording: &Recording<RecordingShare>,
     target_release_id: ID,
     track_split_bps_value: u16,
 ): Track {
