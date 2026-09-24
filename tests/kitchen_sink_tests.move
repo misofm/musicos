@@ -8,6 +8,7 @@ use musicos::release;
 use musicos::test_helpers;
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
+use sui::clock;
 use sui::event;
 
 // === Tests ===
@@ -28,7 +29,7 @@ fun test_release_kitchen_sink() {
 
     let (rel, rel_cap) = release::new_for_testing(tracks, ctx);
 
-    let clock = sui::clock::create_for_testing(ctx);
+    let clock = clock::create_for_testing(ctx);
     rel.publish(&rel_cap, &clock);
 
     clock.destroy_for_testing();
@@ -65,7 +66,7 @@ fun test_release_track_events_at_255_tracks() {
 
     assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
-    let clock = sui::clock::create_for_testing(ctx);
+    let clock = clock::create_for_testing(ctx);
     rel.publish(&rel_cap, &clock);
     clock.destroy_for_testing();
     destroy(rel_cap);

@@ -28,6 +28,9 @@ use sui::coin_registry::Currency;
 use sui::derived_object::claim;
 use sui::event::emit;
 
+#[test_only]
+use sui::bcs::to_bytes;
+
 // === Errors ===
 
 // State errors (10-19)
@@ -192,7 +195,7 @@ public fun is_published_state<CompositionShare>(self: &Composition<CompositionSh
 
 #[test_only]
 public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
-    sui::bcs::to_bytes(&CompositionState::Published(timestamp_ms))
+    to_bytes(&CompositionState::Published(timestamp_ms))
 }
 
 #[test_only]

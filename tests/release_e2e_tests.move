@@ -15,6 +15,7 @@ use musicos::release::{Self, Release, ReleaseRegistry};
 use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
+use sui::clock;
 use sui::event;
 use sui::test_scenario;
 
@@ -55,7 +56,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
         ROYALTY_RATE_BPS,
         scenario.ctx(),
     );
-    let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     comp.publish(&comp_cap, &clock); // shares the composition
     clock.destroy_for_testing();
     destroy(comp_cap);
@@ -67,7 +68,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
         object::id(&comp),
         scenario.ctx(),
     );
-    let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     rec.publish(&rec_cap, &clock); // shares the recording
     clock.destroy_for_testing();
     let mut recording_events =
@@ -101,7 +102,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(object::id(&rel), predicted_release_id);
     assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
-    let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     rel.publish(&rel_cap, &clock); // verifies track assignment, shares
     clock.destroy_for_testing();
 
@@ -189,7 +190,7 @@ fun publish_aborts_when_track_targets_a_different_release() {
     // ...but the release is created with nonce 2: different derived id.
     let mut registry = scenario.take_shared<ReleaseRegistry>();
     let (rel, rel_cap) = registry.new(vector[t], 2);
-    let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     rel.publish(&rel_cap, &clock); // aborts: track targets a different release
 
     // Unreachable, but the compiler requires all non-drop values consumed.

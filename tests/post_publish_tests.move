@@ -12,7 +12,9 @@ use musicos::composition::{Self, Composition, CompositionPublishedEvent};
 use musicos::recording::{Self, Recording, RecordingPublishedEvent};
 use musicos::release::{Self, Release, ReleasePublishedEvent};
 use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
+use musicos::track;
 use std::unit_test::{assert_eq, destroy};
+use sui::clock;
 use sui::dynamic_field;
 use sui::event;
 use sui::test_scenario;
@@ -41,8 +43,8 @@ fun publish_composition(
     let ctx = scenario.ctx();
     let (comp, cap) = composition::new_for_testing<CompositionShare>(1500, ctx);
     let comp_id = object::id(&comp);
-    let mut clock = sui::clock::create_for_testing(ctx);
-    sui::clock::set_for_testing(&mut clock, 4242);
+    let mut clock = clock::create_for_testing(ctx);
+    clock.set_for_testing(4242);
     comp.publish(&cap, &clock);
     clock.destroy_for_testing();
 
@@ -69,8 +71,8 @@ fun publish_recording(
         ctx,
     );
     let rec_id = object::id(&rec);
-    let mut clock = sui::clock::create_for_testing(ctx);
-    sui::clock::set_for_testing(&mut clock, 4343);
+    let mut clock = clock::create_for_testing(ctx);
+    clock.set_for_testing(4343);
     rec.publish(&cap, &clock);
     clock.destroy_for_testing();
 
@@ -94,7 +96,7 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
     let ctx = scenario.ctx();
     let recording_id = test_helpers::fake_id(ctx);
     let (rel, cap) = release::new_for_testing(
-        vector[musicos::track::new_for_testing(
+        vector[track::new_for_testing(
             recording_id,
             test_helpers::fake_id(ctx),
             10000,
@@ -102,8 +104,8 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
         ctx,
     );
     let rel_id = object::id(&rel);
-    let mut clock = sui::clock::create_for_testing(ctx);
-    sui::clock::set_for_testing(&mut clock, 4444);
+    let mut clock = clock::create_for_testing(ctx);
+    clock.set_for_testing(4444);
     rel.publish(&cap, &clock);
     clock.destroy_for_testing();
 
@@ -136,7 +138,7 @@ fun composition_publish_twice_aborts() {
 
     scenario.next_tx(OWNER);
     let comp = scenario.take_shared<Composition<CompositionShare>>();
-    let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     comp.publish(&cap, &clock);
 
     clock.destroy_for_testing();
@@ -176,7 +178,7 @@ fun recording_publish_twice_aborts() {
 
     scenario.next_tx(OWNER);
     let rec = scenario.take_shared<Recording<RecordingShare>>();
-    let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     rec.publish(&cap, &clock);
 
     clock.destroy_for_testing();
@@ -193,7 +195,7 @@ fun release_publish_twice_aborts() {
 
     scenario.next_tx(OWNER);
     let rel = scenario.take_shared<Release>();
-    let clock = sui::clock::create_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     rel.publish(&cap, &clock);
 
     clock.destroy_for_testing();

@@ -8,6 +8,7 @@ module musicos::release_digest_tests;
 
 use musicos::release;
 use musicos::test_helpers;
+use std::debug;
 use std::unit_test::{assert_eq, destroy};
 use sui::bcs::to_bytes;
 use sui::hash::blake2b256;
@@ -42,7 +43,7 @@ fun single_recording_digest_matches_expected_bcs_hash() {
     assert!(digest.length() == 32);
 
     // Printed for comparison with the TypeScript SDK.
-    std::debug::print(&digest);
+    debug::print(&digest);
 }
 
 #[test]
@@ -63,7 +64,7 @@ fun multiple_recordings_digest_matches_expected_bcs_hash() {
     assert!(digest.length() == 32);
 
     // Printed for comparison with the TypeScript SDK.
-    std::debug::print(&digest);
+    debug::print(&digest);
 }
 
 #[test]
@@ -159,9 +160,9 @@ fun bcs_encoding_has_expected_structure() {
     assert!(nonce_bytes.length() == 32);
 
     // Print bytes for debugging
-    std::debug::print(&recording_ids_bytes);
-    std::debug::print(&track_splits_bytes);
-    std::debug::print(&nonce_bytes);
+    debug::print(&recording_ids_bytes);
+    debug::print(&track_splits_bytes);
+    debug::print(&nonce_bytes);
 }
 
 // === derive_target_release_id parity tests ===

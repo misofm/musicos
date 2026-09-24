@@ -7,6 +7,7 @@ module musicos::composition_tests;
 use musicos::composition::{Self, Composition};
 use musicos::test_helpers::CompositionShare;
 use std::unit_test::{assert_eq, destroy};
+use sui::clock;
 use sui::test_scenario;
 
 const OWNER: address = @0xA1;
@@ -31,7 +32,7 @@ fun test_publish_composition() {
     let mut scenario = test_scenario::begin(OWNER);
     let ctx = scenario.ctx();
     let (comp, cap) = composition::new_for_testing<CompositionShare>(1500, ctx);
-    let clock = sui::clock::create_for_testing(ctx);
+    let clock = clock::create_for_testing(ctx);
     comp.publish(&cap, &clock); // shares the composition
     clock.destroy_for_testing();
 

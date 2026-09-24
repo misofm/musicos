@@ -4,6 +4,7 @@ module musicos::recording_tests;
 use musicos::recording::{Self, Recording};
 use musicos::test_helpers::{Self, RecordingShare, CompositionShare};
 use std::unit_test::destroy;
+use sui::clock;
 use sui::test_scenario;
 
 const OWNER: address = @0xA1;
@@ -25,7 +26,7 @@ fun test_publish_recording() {
     let mut scenario = test_scenario::begin(OWNER);
     let ctx = scenario.ctx();
     let (rec, cap) = new_test_recording(ctx);
-    let clock = sui::clock::create_for_testing(ctx);
+    let clock = clock::create_for_testing(ctx);
     rec.publish(&cap, &clock); // shares the recording
     clock.destroy_for_testing();
 
