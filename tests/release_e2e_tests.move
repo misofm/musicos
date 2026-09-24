@@ -1,20 +1,11 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// End-to-end test of the production release flow across transaction
-/// boundaries and actors, through the canonical shared `ReleaseRegistry`:
-///
-/// 1. A songwriter publishes a composition.
-/// 2. An artist publishes a recording of it.
-/// 3. The artist consents to the *predicted* release id (digest-derived via
-///    `derive_target_release_id`) by calling `track::new` directly with the
-///    recording admin capability — there is no separable authorization
-///    object to negotiate over or hand off; that is now an offer extension's
-///    job.
-/// 4. A label creates the release through `release::new` (claiming the
-///    digest-derived UID from the canonical registry) and publishes it — which verifies
-///    every track was aimed at exactly this release.
-/// 5. Anyone can read the published release and its assigned track.
+/// End-to-end release flow across transactions and actors, through the
+/// canonical shared `ReleaseRegistry`: a songwriter publishes a composition,
+/// an artist publishes a recording and consents to the predicted release id
+/// via `track::new`, a label assembles and publishes the release (verifying
+/// every track targets it), and anyone can read the result.
 #[test_only]
 module musicos::release_e2e_tests;
 
@@ -133,11 +124,8 @@ fun full_track_release_flow_publishes_at_derived_id() {
     // that recording's `RecordingPublishedEvent` yields it.
     assert_eq!(event_recording, rec_event_recording_id);
     assert_eq!(rec_event_composition_id, composition_id.to_address());
-    // The events carry no digest or registry id: both are reconstructible
-    // from the payloads alone. Re-deriving the release id from nothing but the
-    // track events' recordings and splits and the release event's nonce (under
-    // the registry announced by `ReleaseRegistryCreatedEvent`) reproduces
-    // `release_id`.
+    // Re-deriving the release id from the track events' recordings and splits
+    // and the release event's nonce reproduces `release_id`.
     assert_eq!(
         registry.derive_target_release_id(
             vector[event_recording.to_id()],

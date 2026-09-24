@@ -1,11 +1,8 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// Tests for release digest calculation and derive_target_release_id to verify TypeScript SDK parity.
-/// Pure hashing/BCS-encoding math over plain `ID`/`u64`/`u256` values, with no
-/// object creation, ownership, or transaction boundaries involved — scenario
-/// mechanics would add nothing, so these stay `tx_context::dummy()` (used
-/// only to mint fixture IDs via `test_helpers::fake_id`).
+/// Release digest and `derive_target_release_id` tests, verifying TypeScript
+/// SDK parity. Pure hashing/BCS math with no ownership mechanics.
 #[test_only]
 module musicos::release_digest_tests;
 
@@ -15,8 +12,7 @@ use std::unit_test::{assert_eq, destroy};
 use sui::bcs::to_bytes;
 use sui::hash::blake2b256;
 
-/// Calculates the release digest using the same algorithm as release.move.
-/// This is exposed for testing to verify SDK parity.
+/// Mirrors `release::calculate_release_digest` for SDK parity checks.
 fun calculate_release_digest(
     recording_ids: vector<ID>,
     track_split_values: vector<u64>,
@@ -43,11 +39,9 @@ fun single_recording_digest_matches_expected_bcs_hash() {
 
     let digest = calculate_release_digest(recording_ids, track_splits, nonce);
 
-    // Digest should be 32 bytes
     assert!(digest.length() == 32);
 
-    // Print the digest for comparison with TypeScript SDK
-    // (In actual usage, we'd compare against a known expected value)
+    // Printed for comparison with the TypeScript SDK.
     std::debug::print(&digest);
 }
 
@@ -66,10 +60,9 @@ fun multiple_recordings_digest_matches_expected_bcs_hash() {
 
     let digest = calculate_release_digest(recording_ids, track_splits, nonce);
 
-    // Digest should be 32 bytes
     assert!(digest.length() == 32);
 
-    // Print the digest for comparison with TypeScript SDK
+    // Printed for comparison with the TypeScript SDK.
     std::debug::print(&digest);
 }
 
@@ -195,10 +188,8 @@ fun single_target_release_id_derivation_is_deterministic() {
     let expected_digest = x"dccbc50994240ba6de125686dc040b27b8c739fe8b55d8d7cbf923535b57af6c";
     assert!(digest == expected_digest, 0);
 
-    // derive_target_release_id depends on the registry's actual ID, so we can't
-    // hardcode an expected release ID here (the registry here is a fixture).
-    // But we verify it returns a valid ID and that calling it twice returns
-    // the same result (deterministic).
+    // The release id depends on the fixture registry's id, so only determinism
+    // is checked here.
     let release_id_1 = registry.derive_target_release_id(recording_ids, track_splits, nonce);
     let release_id_2 = registry.derive_target_release_id(recording_ids, track_splits, nonce);
     assert_eq!(release_id_1, release_id_2);

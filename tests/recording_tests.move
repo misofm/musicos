@@ -18,9 +18,8 @@ fun new_test_recording(ctx: &mut TxContext): (
 
 // === Publish ===
 
-/// `publish` shares the recording — an ownership-affecting op — so this runs
-/// as a scenario: publish in one transaction, confirm the object is
-/// genuinely shared and re-fetchable via `take_shared` in the next.
+/// `publish` shares the recording: publish in one transaction, re-fetch it
+/// via `take_shared` in the next.
 #[test]
 fun test_publish_recording() {
     let mut scenario = test_scenario::begin(OWNER);
@@ -39,11 +38,5 @@ fun test_publish_recording() {
     scenario.end();
 }
 
-// A recording carries no naming fields: display titles (the recording's and
-// its composition's) and richer naming live in the metadata extension.
-// Naming behavior is therefore untestable here by design.
-
-// Recordings are independent objects (fresh `object::new`), not derived children
-// keyed by a per-composition index: two recordings created under one composition
-// have distinct ids and require no contiguity/derivation. Concurrency- and
-// id-independence behavior is covered by `production_constructor_tests`.
+// Id independence of recordings under one composition is covered by
+// `production_constructor_tests`.

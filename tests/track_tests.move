@@ -1,17 +1,9 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// `Track` has `drop, store` but not `key`: it is never an object, never owned,
-/// never shared, and `assign` is `public(package)` — reachable only from
-/// `release::publish` in production, or directly from any module in this
-/// package in tests. There is no ownership mechanics to model here (no
-/// sender, no `take_shared`/`take_from_sender`), so these remain
-/// `tx_context::dummy()` unit tests exercising the state machine directly.
-/// The double-assign and assign-after-read paths below are unreachable through
-/// `release::publish` (a release can only ever be published once, and each of
-/// its tracks assigned exactly once — see `post_publish_tests`), so they are
-/// only reachable by calling the package-visible `assign` a second time
-/// directly, as done here.
+/// `Track` state-machine tests. A track is never an object and `assign` is
+/// package-visible, so these call it directly; the double-assign path is
+/// unreachable through `release::publish`, which assigns each track once.
 #[test_only]
 module musicos::track_tests;
 
@@ -43,11 +35,7 @@ fun assign_transitions_unassigned_to_assigned() {
     release_uid.delete();
 }
 
-/// A track can only ever be assigned once: calling `assign` a second time —
-/// even with the same matching release UID — aborts. In production this is
-/// unreachable (a release publishes, and therefore assigns each of its
-/// tracks, exactly once), so the second call here goes directly through the
-/// package-visible `assign` rather than through `release::publish`.
+/// A second `assign`, even with the same matching release UID, aborts.
 #[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
 fun assign_twice_aborts() {
     let ctx = &mut tx_context::dummy();
@@ -76,11 +64,8 @@ fun target_release_id_reads_unassigned_commitment() {
     destroy(t);
 }
 
-/// Once assigned, the 32-byte target-release commitment has served its
-/// purpose and is shed: `target_release_id` aborts on an `Assigned` track.
-/// An assigned track only ever exists inside the published release it came
-/// from, so callers already have the answer from context — see the accessor's
-/// doc comment in track.move.
+/// Once assigned, the target commitment is shed: `target_release_id` aborts
+/// on an `Assigned` track.
 #[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
 fun target_release_id_on_assigned_track_aborts() {
     let ctx = &mut tx_context::dummy();

@@ -89,8 +89,7 @@ fun publish_recording(
 }
 
 /// Publishes a minimal release and returns its admin cap and id (object is
-/// shared). The id lets a test that publishes more than one shared `Release`
-/// disambiguate them — a release carries no title or other naming field.
+/// shared). The id disambiguates when a test publishes several releases.
 fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAdminCap, ID) {
     let ctx = scenario.ctx();
     let recording_id = test_helpers::fake_id(ctx);
@@ -108,10 +107,8 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
     rel.publish(&cap, &clock);
     clock.destroy_for_testing();
 
-    // Popping the most recent event is safe even when a test publishes more
-    // than one release, since each publish appends exactly one release event
-    // (after one track event per track). The release event captures the
-    // identity, the timestamp and the nonce; the track event the allocation.
+    // Each publish appends exactly one release event (after one track event
+    // per track), so popping the latest is safe with several releases.
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
     let (event_rel_id, published_at_ms, nonce) =
@@ -169,10 +166,8 @@ fun composition_uid_mut_works_after_publish() {
 
 // === Recording ===
 
-// Recording and Release carry no embedded-field mutators besides `publish`
-// itself (naming lives in the metadata extension, everything else is fixed at
-// construction), so post-publish immutability reduces to the publish-twice
-// aborts below plus the uid_mut-stays-open tests.
+// Recording and Release have no embedded-field mutators besides `publish`, so
+// immutability reduces to publish-twice aborts plus uid_mut-stays-open.
 
 #[test, expected_failure(abort_code = ENotInitializedState, location = musicos::recording)]
 fun recording_publish_twice_aborts() {
@@ -242,24 +237,19 @@ fun release_uid_mut_works_after_publish() {
     scenario.end();
 }
 
-/// The extension surface's authorization is unforgeable: a cap minted for a
-/// different, unrelated release cannot open `uid_mut` on this one — even
-/// after both are published and shared. This is the realistic production
-/// shape of a wrong-cap attempt (`uid_mut` works in any lifecycle state, so
-/// the interesting adversarial case is post-publish, cross-actor, not
-/// pre-publish same-transaction).
+/// A cap minted for an unrelated release cannot open `uid_mut` on this one,
+/// even after both are published and shared — the realistic cross-actor,
+/// post-publish shape of a wrong-cap attempt.
 #[test, expected_failure(abort_code = EUnauthorized, location = musicos::release)]
 fun release_uid_mut_wrong_cap_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let (owner_cap, owner_rel_id) = publish_release(&mut scenario);
 
-    // STRANGER publishes and shares an entirely unrelated release, and holds
-    // that release's own (validly-scoped) cap.
+    // STRANGER publishes an unrelated release and holds its cap.
     scenario.next_tx(STRANGER);
     let (stranger_cap, _stranger_rel_id) = publish_release(&mut scenario);
 
-    // STRANGER now tries to open uid_mut on OWNER's release using their own
-    // cap — disambiguated from STRANGER's own shared release by id.
+    // STRANGER tries to open uid_mut on OWNER's release with that cap.
     scenario.next_tx(STRANGER);
     let mut owner_rel = test_scenario::take_shared_by_id<Release>(&scenario, owner_rel_id);
     let _uid = owner_rel.uid_mut(&stranger_cap); // wrong cap: aborts EUnauthorized

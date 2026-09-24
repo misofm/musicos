@@ -2,20 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Tests for the production `composition::new` and `recording::new`
-/// constructors — the real entry points that wire `share::initialize`
-/// (fixed 100M supply, consumed treasury cap) and, for recordings, the fresh
-/// `object::new` id plus the read-only `&Composition` royalty snapshot.
-///
-/// Each scenario uses one CoinRegistry and distinct composition/recording
-/// share types. Currencies are finalized and shared through production APIs,
-/// then retrieved in a later transaction before calling the constructors.
-///
-/// The economics of the composition cut are asserted through effects, not
-/// event fields (the Published events carry only identity, the applied rate,
-/// and the timestamp): the creator's returned balance is `supply - cut`, and
-/// the split-off cut is never returned to the caller. The composition-side
-/// withdrawals exercise the admin's redemption path; the unit-test accumulator
-/// does not enforce balances, so they are not by themselves proof of delivery.
+/// constructors, which wire `share::initialize`. Each scenario uses one
+/// CoinRegistry with distinct share types, finalized and shared through
+/// production APIs. The composition cut is asserted through effects: the
+/// creator's balance is `supply - cut`. The composition-side withdrawals
+/// exercise the redemption path but, since the unit-test accumulator does
+/// not enforce balances, are not by themselves proof of delivery.
 #[test_only]
 module musicos::production_constructor_tests;
 
@@ -153,9 +145,7 @@ fun recording_new_settles_composition_cut() {
     );
     test_scenario::return_shared(composition_currency);
 
-    // A production composition is published before the next transaction can
-    // create a recording against its shared identity.  This mirrors the
-    // atomic create-and-publish lifecycle used on-chain.
+    // Publish the composition so the next transaction can record against it.
     let composition_id = object::id(&comp).to_address();
     let mut composition_clock = sui::clock::create_for_testing(ctx);
     sui::clock::set_for_testing(&mut composition_clock, 4242);
@@ -178,9 +168,7 @@ fun recording_new_settles_composition_cut() {
     assert!(currency.is_supply_fixed());
     test_scenario::return_shared(currency);
 
-    // The creator keeps the full supply minus the composition's royalty-rate
-    // cut (15% of 100M), which `recording::new` splits off and sends to the
-    // composition's address.
+    // The creator keeps the supply minus the 15% cut sent to the composition.
     assert_eq!(shares.value(), SHARE_SUPPLY - 15_000_000_000_000);
     assert_eq!(rec.composition_id(), object::id(&comp));
     assert!(rec.is_initialized_state());
@@ -213,9 +201,7 @@ fun recording_new_settles_composition_cut() {
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
     let rec_cap = scenario.take_from_sender<recording::RecordingAdminCap<RecordingShare>>();
     destroy(rec);
-    // cut + remainder == supply. The withdrawal exercises the composition
-    // admin's redemption path; delivery itself is proven by the creator's
-    // balance above (the split-off cut is never returned to the caller).
+    // cut + remainder == supply, via the composition admin's redemption path.
     let mut creator_shares = scenario.take_from_sender<Coin<RecordingShare>>();
     let withdrawal = sui::balance::withdraw_funds_from_object<RecordingShare>(
         comp.uid_mut(&comp_cap), 15_000_000_000_000,
@@ -267,8 +253,7 @@ fun recording_new_zero_rate_grants_no_shares() {
     );
     test_scenario::return_shared(currency);
 
-    // A 0% composition royalty grants the composition no recording shares: the
-    // split/send is skipped, so the creator retains the entire supply.
+    // A 0% rate skips the split: the creator keeps the entire supply.
     assert_eq!(shares.value(), SHARE_SUPPLY);
 
     assert_eq!(sui::event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
@@ -299,8 +284,7 @@ fun recording_new_zero_rate_grants_no_shares() {
     let rec = scenario.take_shared<recording::Recording<RecordingShare>>();
     let comp_cap = scenario.take_from_sender<composition::CompositionAdminCap<Share>>();
     let mut creator_shares = scenario.take_from_sender<Coin<RecordingShare>>();
-    // Nothing was split off for the composition — the creator already holds
-    // the whole supply — so there is nothing for its admin to redeem.
+    // Nothing was split off, so there is nothing for the composition to redeem.
     let withdrawal = sui::balance::withdraw_funds_from_object<RecordingShare>(
         comp.uid_mut(&comp_cap), 0,
     );
@@ -424,8 +408,7 @@ fun composition_new_at_zero_rate_succeeds() {
 }
 
 /// Two recordings under one composition are independent objects with distinct
-/// ids and no ordering/derivation between them — the composition is read-only,
-/// so this is exactly the concurrency-safe path (no index, no `&mut` contention).
+/// ids: the composition is read-only, so there is no index or `&mut` contention.
 #[test]
 fun recording_new_independent_ids_succeed() {
     let mut scenario = new_scenario();

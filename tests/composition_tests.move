@@ -1,13 +1,6 @@
-/// Royalty-rate boundary and lifecycle tests for `composition::new`.
-/// These construct and inspect `Composition` values without ever sharing or
-/// re-taking one across a transaction boundary, so `tx_context::dummy()` is
-/// sufficient — the one exception is `test_publish_composition`, which does
-/// touch object ownership (`publish` calls `share_object`) and runs as a
-/// `test_scenario` accordingly. The fuller publish/uid_mut/wrong-cap
-/// ownership flows live in `post_publish_tests`.
-///
-/// A composition carries no title (display titles live in the metadata
-/// extension), so the royalty rate is the only configurable embedded field.
+/// Royalty-rate boundary and lifecycle tests for `composition::new`. Only
+/// `test_publish_composition` touches ownership and runs as a scenario; the
+/// fuller publish/uid_mut/wrong-cap flows live in `post_publish_tests`.
 #[test_only]
 module musicos::composition_tests;
 
@@ -31,9 +24,8 @@ fun test_new_composition() {
     destroy(cap);
 }
 
-/// `publish` shares the composition — an ownership-affecting op — so this
-/// runs as a scenario: publish in one transaction, confirm the object is
-/// genuinely shared and re-fetchable via `take_shared` in the next.
+/// `publish` shares the composition: publish in one transaction, re-fetch it
+/// via `take_shared` in the next.
 #[test]
 fun test_publish_composition() {
     let mut scenario = test_scenario::begin(OWNER);
@@ -55,12 +47,9 @@ fun test_publish_composition() {
 
 // === Royalty rate ===
 
-// The royalty rate is immutable — set once in `new`, no setter exists. The
-// tests below pin the accepted range at creation: [0, 10000], no floor, no
-// protocol ceiling; whether a rate is acceptable is a recorder's client-side
-// concern.
+// The rate is set once in `new`; these pin the accepted range: [0, 10000].
 
-/// There is no protocol ceiling on the rate — any value up to 100% is valid.
+/// No protocol ceiling: any rate up to 100% is valid.
 #[test]
 fun test_new_above_former_cap() {
     let ctx = &mut tx_context::dummy();

@@ -1,11 +1,6 @@
-/// Structural stress test: proves a large tracklist (255 tracks) with
-/// exact-100% splits is achievable and that the resulting release still
-/// publishes. Core imposes no track limit of its own — the ceiling is Sui's
-/// object, event and gas limits. The only thing under test is whether
-/// construction and `publish` abort at this size — there is no cross-transaction
-/// re-fetch or sender-dependent behavior to assert on the shared object
-/// afterward, so this stays a single `tx_context::dummy()` transaction rather
-/// than a `test_scenario`.
+/// Structural stress test: a 255-track release with exact-100% splits builds
+/// and publishes. Core imposes no track limit of its own; the ceiling is Sui's
+/// object, event and gas limits.
 #[test_only]
 module musicos::kitchen_sink_tests;
 
@@ -17,21 +12,13 @@ use sui::event;
 
 // === Tests ===
 
-// Recording and release kitchen-sink tests used to exercise their naming
-// fields at max bounds; core objects now carry no naming fields (titles live
-// in the metadata extensions), so only the release's tracklist retains
-// structural bounds.
-
-/// Kitchen sink test: creates a release with a large tracklist.
-/// - 255 tracks in one flat tracklist
-/// - Track splits sum to exactly 10000 BPS (55 x 40 + 200 x 39 = 10000)
-/// - Successfully publishes
+/// 255 tracks whose splits sum to exactly 10000 BPS (55 x 40 + 200 x 39)
+/// build and publish.
 #[test]
 fun test_release_kitchen_sink() {
     let ctx = &mut tx_context::dummy();
 
-    // Split math: 55 x 40 BPS + 200 x 39 BPS = 2200 + 7800 = 10000 BPS (100%)
-    // Tracks are created with a dummy release_id; release::new_for_testing patches them.
+    // Tracks get a dummy release id; release::new_for_testing patches them.
     let dummy_release_id = test_helpers::fake_id(ctx);
     let tracks = vector::tabulate!(255, |index| track::new_for_testing(
         test_helpers::fake_id(ctx),
@@ -39,14 +26,11 @@ fun test_release_kitchen_sink() {
         if (index < 55) 40 else 39,
     ));
 
-    // new_for_testing patches all tracks to point to the real release ID.
     let (rel, rel_cap) = release::new_for_testing(tracks, ctx);
 
-    // Publish - proves a large tracklist with exact splits publishes
     let clock = sui::clock::create_for_testing(ctx);
     rel.publish(&rel_cap, &clock);
 
-    // Cleanup
     clock.destroy_for_testing();
     destroy(rel_cap);
 }
