@@ -246,12 +246,14 @@ public fun new<RecordingShare, CompositionShare>(
     // composition's portion is never returned to the caller, so the creator
     // cannot retain it.
     //
-    // A 0% rate (e.g. a generative recording with no authored composition) yields
-    // no cut: skip the split/send so we don't open a zero-value share accumulator
-    // for the composition. The Published event still records that the applied
-    // rate was zero.
-    let composition_cut = composition_royalty_rate.apply(recording_shares.value());
-    if (composition_cut > 0) {
+    // A 0% rate (e.g. a generative recording with no authored composition) has
+    // no cut: skip the calculation and the split/send so we don't open a
+    // zero-value share accumulator for the composition. The Published event
+    // still records that the applied rate was zero. Any non-zero rate yields a
+    // non-zero cut, since `share::initialize` always mints the full fixed
+    // supply (1 bps of it is 10^10 base units).
+    if (composition_royalty_rate.value() > 0) {
+        let composition_cut = composition_royalty_rate.apply(recording_shares.value());
         let composition_shares = recording_shares.split(composition_cut);
         composition_shares.send_funds(composition_id.to_address());
     };
