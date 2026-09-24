@@ -39,7 +39,7 @@ fun init_creates_shared_registry_and_emits_event() {
 
     scenario.next_tx(READER);
     let registry = scenario.take_shared<ReleaseRegistry>();
-    assert_eq!(object::id(&registry).to_address(), event_registry_id);
+    assert_eq!(object::id(&registry), event_registry_id);
     test_scenario::return_shared(registry);
     scenario.end();
 }
@@ -103,7 +103,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(published_events.length(), 1);
     let (event_release_id, event_nonce) =
         release::release_published_event_fields(published_events.pop_back());
-    assert_eq!(event_release_id, predicted_release_id.to_address());
+    assert_eq!(event_release_id, predicted_release_id);
     assert_eq!(event_nonce, NONCE);
     let track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
     assert_eq!(track_events.length(), 1);
@@ -111,20 +111,20 @@ fun full_track_release_flow_publishes_at_derived_id() {
         release::release_track_assigned_event_fields(track_events[0]);
     assert_eq!(track_release_id, event_release_id);
     assert_eq!(position, 0);
-    assert_eq!(event_recording, recording_id.to_address());
+    assert_eq!(event_recording, recording_id);
     assert_eq!(event_split, 10000);
     // The track event carries no composition id: joining its recording id to
     // that recording's `RecordingPublishedEvent` yields it.
     assert_eq!(event_recording, rec_event_recording_id);
-    assert_eq!(rec_event_composition_id, composition_id.to_address());
+    assert_eq!(rec_event_composition_id, composition_id);
     // Re-deriving the release id from the track events' recordings and splits
     // and the release event's nonce reproduces `release_id`.
     assert_eq!(
         registry.derive_target_release_id(
-            vector[event_recording.to_id()],
+            vector[event_recording],
             vector[event_split as u64],
             event_nonce,
-        ).to_address(),
+        ),
         event_release_id,
     );
 

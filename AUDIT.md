@@ -196,6 +196,14 @@
 > above. No authorization, digest or settlement behavior changes. Test count
 > unchanged at 42 (the state-layout test now asserts the bare variant tag).
 
+> **Design change (2026-09-24, unreleased, continued): event ids are `ID`.**
+> Every event field holding an object identity (`composition_id`,
+> `recording_id`, `release_id`, `registry_id`) is now typed `ID` instead of
+> `address`, matching the stored fields and removing the conversions at emit
+> sites. BCS encoding and event sizes are unchanged (both are 32 bytes). The
+> only remaining `to_address()` is the genuine `send_funds` recipient in
+> `recording::new`. Test count unchanged at 42.
+
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
 their admin capabilities, and the extension authorization contract that all
 `musicos-extensions/*` packages build on. Verdict: **safe to publish — no

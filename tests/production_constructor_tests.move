@@ -42,8 +42,8 @@ fun new_scenario(): Scenario {
 
 fun assert_production_recording_published_event<RecordingShare>(
     event: recording::RecordingPublishedEvent<RecordingShare>,
-    expected_recording_id: address,
-    expected_composition_id: address,
+    expected_recording_id: ID,
+    expected_composition_id: ID,
 ) {
     let (recording_id, composition_id) = recording::recording_published_event_fields(event);
     assert_eq!(recording_id, expected_recording_id);
@@ -83,7 +83,7 @@ fun composition_new_initializes_fixed_share_supply() {
     assert!(!comp.is_published_state());
     assert_eq!(event::events_by_type<composition::CompositionPublishedEvent<Share>>().length(), 0);
 
-    let composition_id = object::id(&comp).to_address();
+    let composition_id = object::id(&comp);
     comp.publish(&cap);
 
     let mut events = event::events_by_type<composition::CompositionPublishedEvent<Share>>();
@@ -139,7 +139,7 @@ fun recording_new_settles_composition_cut() {
     test_scenario::return_shared(composition_currency);
 
     // Publish the composition so the next transaction can record against it.
-    let composition_id = object::id(&comp).to_address();
+    let composition_id = object::id(&comp);
     comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
@@ -165,7 +165,7 @@ fun recording_new_settles_composition_cut() {
     assert!(!rec.is_published_state());
     assert_eq!(event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
-    let recording_id = object::id(&rec).to_address();
+    let recording_id = object::id(&rec);
     rec.publish(&rec_cap);
 
     let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
@@ -215,7 +215,7 @@ fun recording_new_zero_rate_grants_no_shares() {
         ctx,
     );
     test_scenario::return_shared(composition_currency);
-    let composition_id = object::id(&comp).to_address();
+    let composition_id = object::id(&comp);
     comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
@@ -240,7 +240,7 @@ fun recording_new_zero_rate_grants_no_shares() {
 
     assert_eq!(event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
-    let recording_id = object::id(&rec).to_address();
+    let recording_id = object::id(&rec);
     rec.publish(&rec_cap);
 
     let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
@@ -290,7 +290,7 @@ fun recording_new_full_rate_grants_full_supply() {
         ctx,
     );
     test_scenario::return_shared(composition_currency);
-    let composition_id = object::id(&comp).to_address();
+    let composition_id = object::id(&comp);
     comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
@@ -314,7 +314,7 @@ fun recording_new_full_rate_grants_full_supply() {
 
     assert_eq!(event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
-    let recording_id = object::id(&rec).to_address();
+    let recording_id = object::id(&rec);
     rec.publish(&rec_cap);
 
     let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
@@ -390,7 +390,7 @@ fun recording_new_independent_ids_succeed() {
         ctx,
     );
     test_scenario::return_shared(composition_currency);
-    let composition_id = object::id(&comp).to_address();
+    let composition_id = object::id(&comp);
     comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
@@ -410,7 +410,7 @@ fun recording_new_independent_ids_succeed() {
         ctx,
     );
     test_scenario::return_shared(currency0);
-    let rec0_id = object::id(&rec0).to_address();
+    let rec0_id = object::id(&rec0);
     rec0.publish(&rec_cap0);
 
     let (rec1, rec_cap1, shares1) = recording::new<OtherRecordingShare, Share>(
@@ -420,7 +420,7 @@ fun recording_new_independent_ids_succeed() {
         ctx,
     );
     test_scenario::return_shared(currency1);
-    let rec1_id = object::id(&rec1).to_address();
+    let rec1_id = object::id(&rec1);
     rec1.publish(&rec_cap1);
 
     assert!(rec0_id != rec1_id);

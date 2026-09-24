@@ -45,7 +45,7 @@ fun publish_composition(
     assert_eq!(events.length(), 1);
     let (event_comp_id, rate_bps) =
         composition::composition_published_event_fields(events.pop_back());
-    assert_eq!(event_comp_id, comp_id.to_address());
+    assert_eq!(event_comp_id, comp_id);
     assert_eq!(rate_bps, 1500);
 
     cap
@@ -69,8 +69,8 @@ fun publish_recording(
     assert_eq!(events.length(), 1);
     let (event_rec_id, event_comp_id) =
         recording::recording_published_event_fields(events.pop_back());
-    assert_eq!(event_rec_id, rec_id.to_address());
-    assert_eq!(event_comp_id, composition_id.to_address());
+    assert_eq!(event_rec_id, rec_id);
+    assert_eq!(event_comp_id, composition_id);
 
     cap
 }
@@ -96,14 +96,14 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
     let (event_rel_id, nonce) = release::release_published_event_fields(events.pop_back());
-    assert_eq!(event_rel_id, rel_id.to_address());
+    assert_eq!(event_rel_id, rel_id);
     assert_eq!(nonce, 0);
     let mut track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
     let (track_rel_id, position, event_recording, event_split) =
         release::release_track_assigned_event_fields(track_events.pop_back());
-    assert_eq!(track_rel_id, rel_id.to_address());
+    assert_eq!(track_rel_id, rel_id);
     assert_eq!(position, 0);
-    assert_eq!(event_recording, recording_id.to_address());
+    assert_eq!(event_recording, recording_id);
     assert_eq!(event_split, 10000);
 
     (cap, rel_id)

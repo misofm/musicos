@@ -75,8 +75,8 @@ public enum RecordingState has drop, store {
 /// royalty rate `new` applied is the immutable `royalty_rate_bps` of the
 /// composition's `CompositionPublishedEvent`.
 public struct RecordingPublishedEvent<phantom RecordingShare> has copy, drop {
-    recording_id: address,
-    composition_id: address,
+    recording_id: ID,
+    composition_id: ID,
 }
 
 // === Public Functions ===
@@ -147,8 +147,8 @@ public fun publish<RecordingShare>(
         RecordingState::Initialized => {
             self.state = RecordingState::Published;
 
-            let recording_id = object::id_address(&self);
-            let composition_id = self.composition_id.to_address();
+            let recording_id = object::id(&self);
+            let composition_id = self.composition_id;
 
             transfer::share_object(self);
 
@@ -224,7 +224,7 @@ public fun new_for_testing<RecordingShare>(
 #[test_only]
 public fun recording_published_event_fields<RecordingShare>(
     event: RecordingPublishedEvent<RecordingShare>,
-): (address, address) {
+): (ID, ID) {
     let RecordingPublishedEvent { recording_id, composition_id } = event;
     (recording_id, composition_id)
 }

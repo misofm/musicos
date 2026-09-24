@@ -75,7 +75,7 @@ public enum CompositionState has drop, store {
 /// cap address, share supply) is derivable from the transaction and the
 /// same-transaction `share::ShareInitializedEvent`.
 public struct CompositionPublishedEvent<phantom CompositionShare> has copy, drop {
-    composition_id: address,
+    composition_id: ID,
     royalty_rate_bps: u16,
 }
 
@@ -127,7 +127,7 @@ public fun publish<CompositionShare>(
         CompositionState::Initialized => {
             self.state = CompositionState::Published;
 
-            let composition_id = object::id_address(&self);
+            let composition_id = object::id(&self);
             let royalty_rate_bps = self.royalty_rate.value();
 
             transfer::share_object(self);
@@ -213,7 +213,7 @@ public fun new_for_testing<CompositionShare>(
 #[test_only]
 public fun composition_published_event_fields<CompositionShare>(
     event: CompositionPublishedEvent<CompositionShare>,
-): (address, u16) {
+): (ID, u16) {
     let CompositionPublishedEvent { composition_id, royalty_rate_bps } = event;
     (composition_id, royalty_rate_bps)
 }

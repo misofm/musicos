@@ -97,10 +97,10 @@ public enum ReleaseState has drop, store {
 /// track's composition is not repeated: join `recording_id` to that
 /// recording's `RecordingPublishedEvent`.
 public struct ReleaseTrackAssignedEvent has copy, drop {
-    release_id: address,
+    release_id: ID,
     /// Zero-based position of the track in the tracklist.
     position: u64,
-    recording_id: address,
+    recording_id: ID,
     split_bps: u16,
 }
 
@@ -110,13 +110,13 @@ public struct ReleaseTrackAssignedEvent has copy, drop {
 /// count, registry id, and the digest — see `calculate_release_digest`) is
 /// derivable from the transaction and the same-transaction events.
 public struct ReleasePublishedEvent has copy, drop {
-    release_id: address,
+    release_id: ID,
     nonce: u256,
 }
 
 /// Emitted once at package initialization with the canonical registry's id.
 public struct ReleaseRegistryCreatedEvent has copy, drop {
-    registry_id: address,
+    registry_id: ID,
 }
 
 // === Public Functions ===
@@ -125,7 +125,7 @@ public struct ReleaseRegistryCreatedEvent has copy, drop {
 /// constructor: this object is the permanent namespace every release commits to.
 fun init(ctx: &mut TxContext) {
     let registry = ReleaseRegistry { id: object::new(ctx) };
-    let registry_id = object::id_address(&registry);
+    let registry_id = object::id(&registry);
 
     transfer::share_object(registry);
 
@@ -192,7 +192,7 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap) {
             self.assign_tracks();
             self.state = ReleaseState::Published;
 
-            let release_id = object::id_address(&self);
+            let release_id = object::id(&self);
 
             transfer::share_object(self);
 
@@ -247,14 +247,14 @@ fun calculate_release_digest(
 /// Assigns every track to this release (verifying its target) and emits one
 /// `ReleaseTrackAssignedEvent` per track in tracklist order.
 fun assign_tracks(self: &mut Release) {
-    let release_id = self.id.to_address();
+    let release_id = self.id.to_inner();
     let mut position = 0;
     self.tracks.do_mut!(|track| {
         track.assign(&self.id);
         emit(ReleaseTrackAssignedEvent {
             release_id,
             position,
-            recording_id: track.recording_id().to_address(),
+            recording_id: track.recording_id(),
             split_bps: track.split_bps().value(),
         });
         position = position + 1;
@@ -277,7 +277,7 @@ public fun new_registry_for_testing(ctx: &mut TxContext): ReleaseRegistry {
 
 /// Unpacks the initialization event for test assertions.
 #[test_only]
-public fun release_registry_created_event_fields(event: ReleaseRegistryCreatedEvent): address {
+public fun release_registry_created_event_fields(event: ReleaseRegistryCreatedEvent): ID {
     let ReleaseRegistryCreatedEvent { registry_id } = event;
     registry_id
 }
@@ -286,7 +286,7 @@ public fun release_registry_created_event_fields(event: ReleaseRegistryCreatedEv
 #[test_only]
 public fun release_published_event_fields(
     event: ReleasePublishedEvent,
-): (address, u256) {
+): (ID, u256) {
     let ReleasePublishedEvent { release_id, nonce } = event;
     (release_id, nonce)
 }
@@ -341,7 +341,7 @@ public fun new_for_testing(
 #[test_only]
 public fun release_track_assigned_event_fields(
     event: ReleaseTrackAssignedEvent,
-): (address, u64, address, u16) {
+): (ID, u64, ID, u16) {
     let ReleaseTrackAssignedEvent { release_id, position, recording_id, split_bps } = event;
     (release_id, position, recording_id, split_bps)
 }

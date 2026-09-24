@@ -46,7 +46,7 @@ fun test_release_track_events_at_255_tracks() {
     assert_eq!(published_events.length(), 1);
     let (event_release_id, event_nonce) =
         release::release_published_event_fields(published_events.pop_back());
-    assert_eq!(event_release_id, predicted_release_id.to_address());
+    assert_eq!(event_release_id, predicted_release_id);
     assert_eq!(event_nonce, nonce);
 
     let track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
@@ -54,9 +54,9 @@ fun test_release_track_events_at_255_tracks() {
     255u64.do!(|index| {
         let (release_id, position, recording_id, split_bps) =
             release::release_track_assigned_event_fields(track_events[index]);
-        assert_eq!(release_id, predicted_release_id.to_address());
+        assert_eq!(release_id, predicted_release_id);
         assert_eq!(position, index);
-        assert_eq!(recording_id, recording_ids[index].to_address());
+        assert_eq!(recording_id, recording_ids[index]);
         assert_eq!(split_bps as u64, track_split_bps[index]);
     });
 
