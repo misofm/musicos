@@ -11,6 +11,7 @@
 #[test_only]
 module musicos::production_constructor_tests;
 
+use bps::bps;
 use musicos::composition;
 use musicos::recording;
 use musicos::share::{Self as test_share, Share};
@@ -49,7 +50,7 @@ fun assert_production_recording_published_event<RecordingShare>(
     assert_eq!(composition_id, expected_composition_id);
 }
 
-#[test, expected_failure(abort_code = coin_registry::ECurrencyAlreadyExists, location = sui::coin_registry)]
+#[test, expected_failure(abort_code = coin_registry::ECurrencyAlreadyExists)]
 fun duplicate_share_currency_registration_aborts() {
     let mut scenario = new_scenario();
     let mut registry = scenario.take_shared<CoinRegistry>();
@@ -102,7 +103,7 @@ fun composition_new_initializes_fixed_share_supply() {
     scenario.end();
 }
 
-#[test, expected_failure(abort_code = 0, location = bps::bps)] // bps::EOverflow
+#[test, expected_failure(abort_code = bps::EOverflow)]
 fun composition_new_above_100_percent_aborts() {
     let mut scenario = new_scenario();
     let mut currency = scenario.take_shared<Currency<Share>>();

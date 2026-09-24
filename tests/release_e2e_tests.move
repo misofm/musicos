@@ -151,7 +151,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
 /// A track whose creator consented to a different release cannot be
 /// published in this one — the digest binding is enforced at
 /// `release::publish`.
-#[test, expected_failure(abort_code = 0, location = musicos::track)] // EUnauthorizedAssignment
+#[test, expected_failure(abort_code = track::EUnauthorizedAssignment)]
 fun publish_aborts_when_track_targets_a_different_release() {
     let mut scenario = test_scenario::begin(SONGWRITER);
     release::init_for_testing(scenario.ctx());

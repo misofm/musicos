@@ -11,9 +11,6 @@ use musicos::test_helpers;
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
 
-// Error codes mirrored from track.move.
-const EAlreadyAssigned: u64 = 1;
-
 /// `assign` transitions `Unassigned(target) -> Assigned` when the release UID
 /// matches the track's committed target.
 #[test]
@@ -36,7 +33,7 @@ fun assign_transitions_unassigned_to_assigned() {
 }
 
 /// A second `assign`, even with the same matching release UID, aborts.
-#[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
+#[test, expected_failure(abort_code = track::EAlreadyAssigned)]
 fun assign_twice_aborts() {
     let ctx = &mut tx_context::dummy();
     let rec_id = test_helpers::fake_id(ctx);
@@ -66,7 +63,7 @@ fun target_release_id_reads_unassigned_commitment() {
 
 /// Once assigned, the target commitment is shed: `target_release_id` aborts
 /// on an `Assigned` track.
-#[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
+#[test, expected_failure(abort_code = track::EAlreadyAssigned)]
 fun target_release_id_on_assigned_track_aborts() {
     let ctx = &mut tx_context::dummy();
     let rec_id = test_helpers::fake_id(ctx);

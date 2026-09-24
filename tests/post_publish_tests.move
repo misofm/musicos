@@ -21,10 +21,6 @@ use sui::test_scenario;
 const OWNER: address = @0xA1;
 const STRANGER: address = @0x51;
 
-// State errors mirrored from the core modules.
-const ENotInitializedState: u64 = 10;
-// Mirrors release::EUnauthorized (0).
-const EUnauthorized: u64 = 0;
 
 /// The indexer hand-decodes state BCS: `Published` is variant tag 1 with no payload.
 #[test]
@@ -115,7 +111,7 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
 
 // === Composition ===
 
-#[test, expected_failure(abort_code = ENotInitializedState, location = musicos::composition)]
+#[test, expected_failure(abort_code = composition::ENotInitializedState)]
 fun composition_publish_twice_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let cap = publish_composition(&mut scenario);
@@ -153,7 +149,7 @@ fun composition_uid_mut_works_after_publish() {
 // Recording and Release have no embedded-field mutators besides `publish`, so
 // immutability reduces to publish-twice aborts plus uid_mut-stays-open.
 
-#[test, expected_failure(abort_code = ENotInitializedState, location = musicos::recording)]
+#[test, expected_failure(abort_code = recording::ENotInitializedState)]
 fun recording_publish_twice_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let cap = publish_recording(&mut scenario);
@@ -168,7 +164,7 @@ fun recording_publish_twice_aborts() {
 
 // === Release ===
 
-#[test, expected_failure(abort_code = ENotInitializedState, location = musicos::release)]
+#[test, expected_failure(abort_code = release::ENotInitializedState)]
 fun release_publish_twice_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let (cap, _rel_id) = publish_release(&mut scenario);
@@ -220,7 +216,7 @@ fun release_uid_mut_works_after_publish() {
 /// A cap minted for an unrelated release cannot open `uid_mut` on this one,
 /// even after both are published and shared — the realistic cross-actor,
 /// post-publish shape of a wrong-cap attempt.
-#[test, expected_failure(abort_code = EUnauthorized, location = musicos::release)]
+#[test, expected_failure(abort_code = release::EUnauthorized)]
 fun release_uid_mut_wrong_cap_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
     let (owner_cap, owner_rel_id) = publish_release(&mut scenario);

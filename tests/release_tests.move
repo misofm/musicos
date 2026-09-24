@@ -4,16 +4,15 @@
 #[test_only]
 module musicos::release_tests;
 
+use bps::bps;
 use musicos::composition;
 use musicos::recording;
 use musicos::release;
 use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
+use sui::derived_object;
 
-// Error codes from release.move
-const EInvalidTrackSplitsSum: u64 = 20;
-const ENoTracks: u64 = 51;
 
 /// Helper to create an ordered tracklist of n tracks sharing splits evenly.
 fun test_tracks(track_count: u64, split_bps: u16, ctx: &mut TxContext): vector<track::Track> {
@@ -47,7 +46,7 @@ fun test_release(ctx: &mut TxContext): (release::Release, release::ReleaseAdminC
 
 // === Creation Validation ===
 
-#[test, expected_failure(abort_code = ENoTracks, location = musicos::release)]
+#[test, expected_failure(abort_code = release::ENoTracks)]
 fun new_without_tracks_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -57,7 +56,7 @@ fun new_without_tracks_aborts() {
     destroy(registry);
 }
 
-#[test, expected_failure(abort_code = EInvalidTrackSplitsSum, location = musicos::release)]
+#[test, expected_failure(abort_code = release::EInvalidTrackSplitsSum)]
 fun new_with_splits_below_total_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -70,7 +69,7 @@ fun new_with_splits_below_total_aborts() {
     destroy(registry);
 }
 
-#[test, expected_failure(abort_code = EInvalidTrackSplitsSum, location = musicos::release)]
+#[test, expected_failure(abort_code = release::EInvalidTrackSplitsSum)]
 fun new_with_splits_above_total_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -85,7 +84,7 @@ fun new_with_splits_above_total_aborts() {
 
 /// The same digest (recording set + splits + nonce) can only ever be claimed
 /// once under the same canonical registry.
-#[test, expected_failure] // aborts in sui::derived_object on the duplicate claim
+#[test, expected_failure(abort_code = derived_object::EObjectAlreadyExists)]
 fun duplicate_digest_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
@@ -156,7 +155,7 @@ fun track_new_creates_unassigned_track() {
 
 /// `bps::new` rejects a split above 100% (10,000 BPS) — the validation
 /// `track::new` relies on when constructing `split_bps`.
-#[test, expected_failure(abort_code = 0, location = bps::bps)] // bps EOverflow
+#[test, expected_failure(abort_code = bps::EOverflow)]
 fun track_new_split_above_100_percent_aborts() {
     let ctx = &mut tx_context::dummy();
     let (comp, comp_cap, rec, rec_cap) = composition_and_recording(ctx);

@@ -4,6 +4,7 @@
 #[test_only]
 module musicos::composition_tests;
 
+use bps::bps;
 use musicos::composition::{Self, Composition};
 use musicos::test_helpers::CompositionShare;
 use std::unit_test::{assert_eq, destroy};
@@ -60,7 +61,7 @@ fun test_new_at_zero_and_max() {
     destroy(cap_max);
 }
 
-#[test, expected_failure(abort_code = 0, location = bps::bps)] // bps::EOverflow
+#[test, expected_failure(abort_code = bps::EOverflow)]
 fun test_new_above_100_percent() {
     let ctx = &mut tx_context::dummy();
     let (comp, cap) = composition::new_for_testing<CompositionShare>(10001, ctx);
