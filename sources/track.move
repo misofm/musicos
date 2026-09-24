@@ -50,14 +50,9 @@ public enum TrackState has drop, store {
 // === Public Functions ===
 
 /// Creates a track: the recording admin's consent to this recording's
-/// inclusion in one specific future release with the given split. The
-/// recording need not be `Published`; `recording` shares its type with the
-/// cap and supplies the id the monomorphic track stores.
-///
-/// `target_release_id` is derived from the release digest, so creating a
-/// track consents to exactly that release's ordered `(recording, split)`
-/// pairs and nonce — nothing else. Title, artwork, credits, and grouping are
-/// extension data chosen by the release creator, not bound by the digest.
+/// inclusion in the release `target_release_id` (see `release` for what that
+/// id commits to) at the given split. The recording need not be `Published`;
+/// it shares its type with the cap and supplies the id the track stores.
 ///
 /// No event: a `Track` has `drop` and is not an object, so a creation event
 /// could announce a consent that is then discarded. A track is consumed in

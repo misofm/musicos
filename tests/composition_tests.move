@@ -7,7 +7,6 @@ module musicos::composition_tests;
 use musicos::composition::{Self, Composition};
 use musicos::test_helpers::CompositionShare;
 use std::unit_test::{assert_eq, destroy};
-use sui::clock;
 use sui::test_scenario;
 
 const OWNER: address = @0xA1;
@@ -32,9 +31,7 @@ fun test_publish_composition() {
     let mut scenario = test_scenario::begin(OWNER);
     let ctx = scenario.ctx();
     let (comp, cap) = composition::new_for_testing<CompositionShare>(1500, ctx);
-    let clock = clock::create_for_testing(ctx);
-    comp.publish(&cap, &clock); // shares the composition
-    clock.destroy_for_testing();
+    comp.publish(&cap); // shares the composition
 
     scenario.next_tx(OWNER);
     let comp = scenario.take_shared<Composition<CompositionShare>>();
@@ -49,16 +46,6 @@ fun test_publish_composition() {
 // === Royalty rate ===
 
 // The rate is set once in `new`; these pin the accepted range: [0, 10000].
-
-/// No protocol ceiling: any rate up to 100% is valid.
-#[test]
-fun test_new_above_former_cap() {
-    let ctx = &mut tx_context::dummy();
-    let (comp, cap) = composition::new_for_testing<CompositionShare>(8000, ctx);
-    assert_eq!(comp.royalty_rate().value(), 8000);
-    destroy(comp);
-    destroy(cap);
-}
 
 #[test]
 fun test_new_at_zero_and_max() {

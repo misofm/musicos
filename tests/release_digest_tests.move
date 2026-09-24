@@ -8,7 +8,6 @@ module musicos::release_digest_tests;
 
 use musicos::release;
 use musicos::test_helpers;
-use std::debug;
 use std::unit_test::{assert_eq, destroy};
 use sui::bcs::to_bytes;
 use sui::hash::blake2b256;
@@ -25,62 +24,6 @@ fun calculate_release_digest(
     hash_input.append(to_bytes(&nonce));
 
     blake2b256(&hash_input)
-}
-
-#[test]
-/// Test single recording with 100% split and nonce 1.
-/// This test verifies the BCS encoding and hashing matches the TypeScript SDK.
-fun single_recording_digest_matches_expected_bcs_hash() {
-    let recording_id = object::id_from_address(
-        @0x0000000000000000000000000000000000000000000000000000000000000001
-    );
-    let recording_ids = vector[recording_id];
-    let track_splits = vector[10000u64]; // 100% = 10000 BPS
-    let nonce = 1u256;
-
-    let digest = calculate_release_digest(recording_ids, track_splits, nonce);
-
-    assert!(digest.length() == 32);
-
-    // Printed for comparison with the TypeScript SDK.
-    debug::print(&digest);
-}
-
-#[test]
-/// Test multiple recordings with split shares and nonce 42.
-fun multiple_recordings_digest_matches_expected_bcs_hash() {
-    let recording_id_1 = object::id_from_address(
-        @0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-    );
-    let recording_id_2 = object::id_from_address(
-        @0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
-    );
-    let recording_ids = vector[recording_id_1, recording_id_2];
-    let track_splits = vector[5000u64, 5000u64]; // 50% each
-    let nonce = 42u256;
-
-    let digest = calculate_release_digest(recording_ids, track_splits, nonce);
-
-    assert!(digest.length() == 32);
-
-    // Printed for comparison with the TypeScript SDK.
-    debug::print(&digest);
-}
-
-#[test]
-/// Test that the same inputs produce the same digest (deterministic).
-fun digest_is_deterministic() {
-    let recording_id = object::id_from_address(
-        @0x0000000000000000000000000000000000000000000000000000000000000001
-    );
-    let recording_ids = vector[recording_id];
-    let track_splits = vector[10000u64];
-    let nonce = 100u256;
-
-    let digest_1 = calculate_release_digest(recording_ids, track_splits, nonce);
-    let digest_2 = calculate_release_digest(recording_ids, track_splits, nonce);
-
-    assert!(digest_1 == digest_2);
 }
 
 #[test]
@@ -135,34 +78,18 @@ fun different_splits_produce_different_digests() {
 }
 
 #[test]
-/// Verify the BCS encoding structure matches expectations.
-/// This test helps debug any encoding mismatches with the TypeScript SDK.
+/// The digest pre-image components have the BCS shape the TypeScript SDK mirrors.
 fun bcs_encoding_has_expected_structure() {
     let recording_id = object::id_from_address(
         @0x0000000000000000000000000000000000000000000000000000000000000001
     );
-    let recording_ids = vector[recording_id];
-    let track_splits = vector[10000u64];
-    let nonce = 1u256;
 
-    // BCS encode each component separately to verify structure
-    let recording_ids_bytes = to_bytes(&recording_ids);
-    let track_splits_bytes = to_bytes(&track_splits);
-    let nonce_bytes = to_bytes(&nonce);
-
-    // vector<ID> with 1 element: 1 byte length (ULEB128) + 32 bytes address = 33 bytes
-    assert!(recording_ids_bytes.length() == 33);
-
-    // vector<u64> with 1 element: 1 byte length (ULEB128) + 8 bytes u64 = 9 bytes
-    assert!(track_splits_bytes.length() == 9);
-
-    // u256: 32 bytes little-endian
-    assert!(nonce_bytes.length() == 32);
-
-    // Print bytes for debugging
-    debug::print(&recording_ids_bytes);
-    debug::print(&track_splits_bytes);
-    debug::print(&nonce_bytes);
+    // vector<ID>, 1 element: ULEB128 length byte + 32-byte address.
+    assert!(to_bytes(&vector[recording_id]).length() == 33);
+    // vector<u64>, 1 element: length byte + 8-byte little-endian u64.
+    assert!(to_bytes(&vector[10000u64]).length() == 9);
+    // u256: 32 bytes little-endian.
+    assert!(to_bytes(&1u256).length() == 32);
 }
 
 // === derive_target_release_id parity tests ===
@@ -173,7 +100,6 @@ fun bcs_encoding_has_expected_structure() {
 #[test]
 /// Single recording, 100% split, nonce=1.
 /// TypeScript expected digest: dccbc50994240ba6de125686dc040b27b8c739fe8b55d8d7cbf923535b57af6c
-/// TypeScript expected release ID: 0x814674793a22d3ef2ee90c1356018e7a5c56a517a3116b372d83457a1789711b
 fun single_target_release_id_derivation_is_deterministic() {
     let mut ctx = tx_context::dummy();
     let registry = release::new_registry_for_testing(&mut ctx);

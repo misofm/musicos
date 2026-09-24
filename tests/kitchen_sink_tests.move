@@ -1,6 +1,6 @@
 /// Structural stress test: a 255-track release with exact-100% splits builds
-/// and publishes. Core imposes no track limit of its own; the ceiling is Sui's
-/// object, event and gas limits.
+/// and publishes through the registry. Core imposes no track limit of its
+/// own; the ceiling is Sui's object, event and gas limits.
 #[test_only]
 module musicos::kitchen_sink_tests;
 
@@ -8,33 +8,7 @@ use musicos::release;
 use musicos::test_helpers;
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
-use sui::clock;
 use sui::event;
-
-// === Tests ===
-
-/// 255 tracks whose splits sum to exactly 10000 BPS (55 x 40 + 200 x 39)
-/// build and publish.
-#[test]
-fun test_release_kitchen_sink() {
-    let ctx = &mut tx_context::dummy();
-
-    // Tracks get a dummy release id; release::new_for_testing patches them.
-    let dummy_release_id = test_helpers::fake_id(ctx);
-    let tracks = vector::tabulate!(255, |index| track::new_for_testing(
-        test_helpers::fake_id(ctx),
-        dummy_release_id,
-        if (index < 55) 40 else 39,
-    ));
-
-    let (rel, rel_cap) = release::new_for_testing(tracks, ctx);
-
-    let clock = clock::create_for_testing(ctx);
-    rel.publish(&rel_cap, &clock);
-
-    clock.destroy_for_testing();
-    destroy(rel_cap);
-}
 
 /// Publishing a 255-track release emits one `ReleaseTrackAssignedEvent` per
 /// position, in order, including duplicate recording IDs and zero-valued
@@ -66,13 +40,11 @@ fun test_release_track_events_at_255_tracks() {
 
     assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
-    let clock = clock::create_for_testing(ctx);
-    rel.publish(&rel_cap, &clock);
-    clock.destroy_for_testing();
+    rel.publish(&rel_cap);
     destroy(rel_cap);
     let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
     assert_eq!(published_events.length(), 1);
-    let (event_release_id, _published_at, event_nonce) =
+    let (event_release_id, event_nonce) =
         release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
     assert_eq!(event_nonce, nonce);

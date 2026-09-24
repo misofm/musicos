@@ -18,7 +18,6 @@ use other_recording_share::share::{Self as other_recording_share, Share as Other
 use recording_share::share::{Self as recording_share, Share as RecordingShare};
 use std::unit_test::{assert_eq, destroy};
 use sui::balance;
-use sui::clock;
 use sui::coin::{Self, Coin, TreasuryCap};
 use sui::coin_registry::{Self, CoinRegistry, Currency};
 use sui::event;
@@ -44,15 +43,10 @@ fun assert_production_recording_published_event<RecordingShare>(
     event: recording::RecordingPublishedEvent<RecordingShare>,
     expected_recording_id: address,
     expected_composition_id: address,
-    expected_rate_bps: u16,
-    expected_published_at_ms: u64,
 ) {
-    let (recording_id, composition_id, rate_bps, published_at_ms) =
-        recording::recording_published_event_fields(event);
+    let (recording_id, composition_id) = recording::recording_published_event_fields(event);
     assert_eq!(recording_id, expected_recording_id);
     assert_eq!(composition_id, expected_composition_id);
-    assert_eq!(rate_bps, expected_rate_bps);
-    assert_eq!(published_at_ms, expected_published_at_ms);
 }
 
 #[test, expected_failure(abort_code = coin_registry::ECurrencyAlreadyExists, location = sui::coin_registry)]
@@ -89,18 +83,14 @@ fun composition_new_initializes_fixed_share_supply() {
     assert_eq!(event::events_by_type<composition::CompositionPublishedEvent<Share>>().length(), 0);
 
     let composition_id = object::id(&comp).to_address();
-    let mut clock = clock::create_for_testing(ctx);
-    clock.set_for_testing(4242);
-    comp.publish(&cap, &clock);
-    clock.destroy_for_testing();
+    comp.publish(&cap);
 
     let mut events = event::events_by_type<composition::CompositionPublishedEvent<Share>>();
     assert_eq!(events.length(), 1);
-    let (event_comp_id, rate_bps, published_at_ms) =
+    let (event_comp_id, rate_bps) =
         composition::composition_published_event_fields(events.pop_back());
     assert_eq!(event_comp_id, composition_id);
     assert_eq!(rate_bps, 1500);
-    assert_eq!(published_at_ms, 4242);
 
     transfer::public_transfer(cap, @0x0);
     transfer::public_transfer(coin::from_balance(shares, scenario.ctx()), @0x0);
@@ -149,10 +139,7 @@ fun recording_new_settles_composition_cut() {
 
     // Publish the composition so the next transaction can record against it.
     let composition_id = object::id(&comp).to_address();
-    let mut composition_clock = clock::create_for_testing(ctx);
-    composition_clock.set_for_testing(4242);
-    comp.publish(&comp_cap, &composition_clock);
-    composition_clock.destroy_for_testing();
+    comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
@@ -178,10 +165,7 @@ fun recording_new_settles_composition_cut() {
     assert_eq!(event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
-    let mut clock = clock::create_for_testing(ctx);
-    clock.set_for_testing(4343);
-    rec.publish(&rec_cap, &clock);
-    clock.destroy_for_testing();
+    rec.publish(&rec_cap);
 
     let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
@@ -189,8 +173,6 @@ fun recording_new_settles_composition_cut() {
         events.pop_back(),
         recording_id,
         composition_id,
-        1500,
-        4343,
     );
 
     test_scenario::return_shared(comp);
@@ -233,10 +215,7 @@ fun recording_new_zero_rate_grants_no_shares() {
     );
     test_scenario::return_shared(composition_currency);
     let composition_id = object::id(&comp).to_address();
-    let mut composition_clock = clock::create_for_testing(ctx);
-    composition_clock.set_for_testing(4440);
-    comp.publish(&comp_cap, &composition_clock);
-    composition_clock.destroy_for_testing();
+    comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
@@ -261,20 +240,14 @@ fun recording_new_zero_rate_grants_no_shares() {
     assert_eq!(event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
-    let mut clock = clock::create_for_testing(ctx);
-    clock.set_for_testing(4441);
-    rec.publish(&rec_cap, &clock);
-    clock.destroy_for_testing();
+    rec.publish(&rec_cap);
 
-    // The event still records that the applied rate was zero.
     let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
     assert_production_recording_published_event(
         events.pop_back(),
         recording_id,
         composition_id,
-        0,
-        4441,
     );
 
     test_scenario::return_shared(comp);
@@ -317,10 +290,7 @@ fun recording_new_full_rate_grants_full_supply() {
     );
     test_scenario::return_shared(composition_currency);
     let composition_id = object::id(&comp).to_address();
-    let mut composition_clock = clock::create_for_testing(ctx);
-    composition_clock.set_for_testing(4450);
-    comp.publish(&comp_cap, &composition_clock);
-    composition_clock.destroy_for_testing();
+    comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
@@ -344,10 +314,7 @@ fun recording_new_full_rate_grants_full_supply() {
     assert_eq!(event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>().length(), 0);
 
     let recording_id = object::id(&rec).to_address();
-    let mut clock = clock::create_for_testing(ctx);
-    clock.set_for_testing(4451);
-    rec.publish(&rec_cap, &clock);
-    clock.destroy_for_testing();
+    rec.publish(&rec_cap);
 
     let mut events = event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
@@ -355,8 +322,6 @@ fun recording_new_full_rate_grants_full_supply() {
         events.pop_back(),
         recording_id,
         composition_id,
-        10000,
-        4451,
     );
 
     test_scenario::return_shared(comp);
@@ -425,10 +390,7 @@ fun recording_new_independent_ids_succeed() {
     );
     test_scenario::return_shared(composition_currency);
     let composition_id = object::id(&comp).to_address();
-    let mut composition_clock = clock::create_for_testing(ctx);
-    composition_clock.set_for_testing(4460);
-    comp.publish(&comp_cap, &composition_clock);
-    composition_clock.destroy_for_testing();
+    comp.publish(&comp_cap);
     transfer::public_transfer(comp_cap, @0x0);
     transfer::public_transfer(coin::from_balance(comp_shares, ctx), @0x0);
 
@@ -448,10 +410,7 @@ fun recording_new_independent_ids_succeed() {
     );
     test_scenario::return_shared(currency0);
     let rec0_id = object::id(&rec0).to_address();
-    let mut clock0 = clock::create_for_testing(ctx);
-    clock0.set_for_testing(4461);
-    rec0.publish(&rec_cap0, &clock0);
-    clock0.destroy_for_testing();
+    rec0.publish(&rec_cap0);
 
     let (rec1, rec_cap1, shares1) = recording::new<OtherRecordingShare, Share>(
         &comp,
@@ -461,10 +420,7 @@ fun recording_new_independent_ids_succeed() {
     );
     test_scenario::return_shared(currency1);
     let rec1_id = object::id(&rec1).to_address();
-    let mut clock1 = clock::create_for_testing(ctx);
-    clock1.set_for_testing(4462);
-    rec1.publish(&rec_cap1, &clock1);
-    clock1.destroy_for_testing();
+    rec1.publish(&rec_cap1);
 
     assert!(rec0_id != rec1_id);
     // Each recording settled its own 15% cut independently.
@@ -478,15 +434,11 @@ fun recording_new_independent_ids_succeed() {
         events0.pop_back(),
         rec0_id,
         composition_id,
-        1500,
-        4461,
     );
     assert_production_recording_published_event(
         events1.pop_back(),
         rec1_id,
         composition_id,
-        1500,
-        4462,
     );
 
     test_scenario::return_shared(comp);

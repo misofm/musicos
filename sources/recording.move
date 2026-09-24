@@ -7,14 +7,11 @@
 /// via `uid_mut`. The core/extension split, atomic create-and-publish, and
 /// `uid_mut` trust model are as described in `composition`.
 ///
-/// The embedded `composition_id` is the recording's only link to its
-/// composition: set from the `&Composition` passed to `new`, immutable, and
-/// the single source of truth for which composition a recording (and every
-/// track of it) embodies. `Recording` takes a `RecordingShare` parameter
-/// only — one share type backs exactly one recording, so the pairing is a
-/// data fact, and a single parameter lets clients locate a recording by its
-/// share type alone. To pair a `Recording` with a `Composition`, compare
-/// `composition_id()` with the composition's object id.
+/// The embedded `composition_id`, set from the `&Composition` passed to `new`
+/// and immutable, is the single source of truth for which composition a
+/// recording (and every track of it) embodies. `Recording` takes only a
+/// `RecordingShare` parameter: one share type backs exactly one recording, so
+/// clients can locate a recording by its share type alone.
 ///
 /// A recording is a fresh object, not a derived child of its composition:
 /// `new` reads `&Composition` only, so recordings under one composition
@@ -24,7 +21,6 @@ module musicos::recording;
 use musicos::composition::Composition;
 use share::share;
 use sui::balance::Balance;
-use sui::clock::Clock;
 use sui::coin::TreasuryCap;
 use sui::coin_registry::Currency;
 use sui::derived_object::claim;
@@ -64,30 +60,23 @@ public struct RecordingAdminCapKey() has copy, drop, store;
 
 /// Lifecycle state of a recording.
 public enum RecordingState has drop, store {
-    /// Created but not yet published. Carries the composition royalty rate
-    /// `new` applied, which `publish` reports and cannot otherwise reach.
-    Initialized {
-        composition_royalty_rate_bps: u16,
-    },
+    /// Created but not yet published.
+    Initialized,
     /// Published and immutable.
-    Published(
-        /// Timestamp (ms) when published.
-        u64,
-    ),
+    Published,
 }
 
 // === Events ===
 
-/// Emitted once when a recording is published: identity, composition id, the
-/// composition royalty rate `new` settled as share ownership, and timestamp.
-/// Everything else (share type, sender, currency and treasury cap ids, admin
-/// cap address, the share amounts implied by the fixed supply and the rate)
-/// is derivable from the transaction and `share::ShareInitializedEvent`.
+/// Emitted once when a recording is published: identity and composition id.
+/// The publish time is the event's transaction timestamp. Everything else
+/// (share type, sender, currency and treasury cap ids, admin cap address) is
+/// derivable from the transaction and `share::ShareInitializedEvent`; the
+/// royalty rate `new` applied is the immutable `royalty_rate_bps` of the
+/// composition's `CompositionPublishedEvent`.
 public struct RecordingPublishedEvent<phantom RecordingShare> has copy, drop {
     recording_id: address,
     composition_id: address,
-    composition_royalty_rate_bps: u16,
-    published_at_ms: u64,
 }
 
 // === Public Functions ===
@@ -121,9 +110,7 @@ public fun new<RecordingShare, CompositionShare>(
 
     let mut recording = Recording<RecordingShare> {
         id: object::new(ctx),
-        state: RecordingState::Initialized {
-            composition_royalty_rate_bps: composition_royalty_rate.value(),
-        },
+        state: RecordingState::Initialized,
         composition_id,
     };
 
@@ -138,10 +125,9 @@ public fun new<RecordingShare, CompositionShare>(
 
     // Settle the composition's cut as recording-share ownership; the split-off
     // portion is never returned to the caller. A 0% rate has no cut: skip the
-    // split so the composition gets no zero-value share accumulator (the event
-    // still records the zero rate). Any non-zero rate yields a non-zero cut,
-    // since the full fixed supply is always minted (1 bps of it is 10^10 base
-    // units).
+    // split so the composition gets no zero-value share accumulator. Any
+    // non-zero rate yields a non-zero cut, since the full fixed supply is
+    // always minted (1 bps of it is 10^10 base units).
     if (composition_royalty_rate.value() > 0) {
         let composition_cut = composition_royalty_rate.apply(recording_shares.value());
         let composition_shares = recording_shares.split(composition_cut);
@@ -156,13 +142,10 @@ public fun new<RecordingShare, CompositionShare>(
 public fun publish<RecordingShare>(
     mut self: Recording<RecordingShare>,
     _: &RecordingAdminCap<RecordingShare>,
-    clock: &Clock,
 ) {
     match (&self.state) {
-        RecordingState::Initialized { composition_royalty_rate_bps } => {
-            let composition_royalty_rate_bps = *composition_royalty_rate_bps;
-            let published_at_ms = clock.timestamp_ms();
-            self.state = RecordingState::Published(published_at_ms);
+        RecordingState::Initialized => {
+            self.state = RecordingState::Published;
 
             let recording_id = object::id_address(&self);
             let composition_id = self.composition_id.to_address();
@@ -172,12 +155,10 @@ public fun publish<RecordingShare>(
             emit(RecordingPublishedEvent<RecordingShare> {
                 recording_id,
                 composition_id,
-                composition_royalty_rate_bps,
-                published_at_ms,
             });
         },
         _ => abort ENotInitializedState,
-    };
+    }
 }
 
 // === View Functions ===
@@ -208,17 +189,17 @@ public fun uid_mut<RecordingShare>(
 
 #[test_only]
 public fun is_initialized_state<RecordingShare>(self: &Recording<RecordingShare>): bool {
-    match (&self.state) { RecordingState::Initialized { .. } => true, _ => false }
+    match (&self.state) { RecordingState::Initialized => true, _ => false }
 }
 
 #[test_only]
 public fun is_published_state<RecordingShare>(self: &Recording<RecordingShare>): bool {
-    match (&self.state) { RecordingState::Published(_) => true, _ => false }
+    match (&self.state) { RecordingState::Published => true, _ => false }
 }
 
 #[test_only]
-public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
-    to_bytes(&RecordingState::Published(timestamp_ms))
+public fun published_state_bcs_bytes(): vector<u8> {
+    to_bytes(&RecordingState::Published)
 }
 
 #[test_only]
@@ -228,7 +209,7 @@ public fun new_for_testing<RecordingShare>(
 ): (Recording<RecordingShare>, RecordingAdminCap<RecordingShare>) {
     let mut recording = Recording<RecordingShare> {
         id: object::new(ctx),
-        state: RecordingState::Initialized { composition_royalty_rate_bps: 0 },
+        state: RecordingState::Initialized,
         composition_id,
     };
 
@@ -243,12 +224,7 @@ public fun new_for_testing<RecordingShare>(
 #[test_only]
 public fun recording_published_event_fields<RecordingShare>(
     event: RecordingPublishedEvent<RecordingShare>,
-): (address, address, u16, u64) {
-    let RecordingPublishedEvent {
-        recording_id,
-        composition_id,
-        composition_royalty_rate_bps,
-        published_at_ms,
-    } = event;
-    (recording_id, composition_id, composition_royalty_rate_bps, published_at_ms)
+): (address, address) {
+    let RecordingPublishedEvent { recording_id, composition_id } = event;
+    (recording_id, composition_id)
 }

@@ -123,7 +123,6 @@ fun release_views_reflect_initialized_release() {
     assert!(rel.is_initialized_state());
     assert!(!rel.is_published_state());
     assert_eq!(rel.tracks().length(), 1);
-    assert_eq!(cap.release_id(), object::id(&rel));
 
     destroy(rel);
     destroy(cap);

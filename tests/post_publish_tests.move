@@ -14,7 +14,6 @@ use musicos::release::{Self, Release, ReleasePublishedEvent};
 use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
-use sui::clock;
 use sui::dynamic_field;
 use sui::event;
 use sui::test_scenario;
@@ -27,13 +26,13 @@ const ENotInitializedState: u64 = 10;
 // Mirrors release::EUnauthorized (0).
 const EUnauthorized: u64 = 0;
 
+/// The indexer hand-decodes state BCS: `Published` is variant tag 1 with no payload.
 #[test]
-fun published_state_bcs_layout_keeps_variant_tag_and_timestamp() {
-    let timestamp = 0x0102030405060708u64;
-    let expected = vector[1u8, 8u8, 7u8, 6u8, 5u8, 4u8, 3u8, 2u8, 1u8];
-    assert_eq!(composition::published_state_bcs_bytes(timestamp), expected);
-    assert_eq!(recording::published_state_bcs_bytes(timestamp), expected);
-    assert_eq!(release::published_state_bcs_bytes(timestamp), expected);
+fun published_state_bcs_layout_keeps_variant_tag() {
+    let expected = vector[1u8];
+    assert_eq!(composition::published_state_bcs_bytes(), expected);
+    assert_eq!(recording::published_state_bcs_bytes(), expected);
+    assert_eq!(release::published_state_bcs_bytes(), expected);
 }
 
 /// Publishes a minimal composition and returns its admin cap (object is shared).
@@ -43,19 +42,15 @@ fun publish_composition(
     let ctx = scenario.ctx();
     let (comp, cap) = composition::new_for_testing<CompositionShare>(1500, ctx);
     let comp_id = object::id(&comp);
-    let mut clock = clock::create_for_testing(ctx);
-    clock.set_for_testing(4242);
-    comp.publish(&cap, &clock);
-    clock.destroy_for_testing();
+    comp.publish(&cap);
 
-    // Event payload captures the identity, the immutable rate, and the timestamp.
+    // Event payload captures the identity and the immutable rate.
     let mut events = event::events_by_type<CompositionPublishedEvent<CompositionShare>>();
     assert_eq!(events.length(), 1);
-    let (event_comp_id, rate_bps, published_at_ms) =
+    let (event_comp_id, rate_bps) =
         composition::composition_published_event_fields(events.pop_back());
     assert_eq!(event_comp_id, comp_id.to_address());
     assert_eq!(rate_bps, 1500);
-    assert_eq!(published_at_ms, 4242);
 
     cap
 }
@@ -71,21 +66,15 @@ fun publish_recording(
         ctx,
     );
     let rec_id = object::id(&rec);
-    let mut clock = clock::create_for_testing(ctx);
-    clock.set_for_testing(4343);
-    rec.publish(&cap, &clock);
-    clock.destroy_for_testing();
+    rec.publish(&cap);
 
-    // Event payload captures the recording/composition linkage, the applied
-    // rate, and the timestamp.
+    // Event payload captures the recording/composition linkage.
     let mut events = event::events_by_type<RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
-    let (event_rec_id, event_comp_id, composition_royalty_rate_bps, published_at_ms) =
+    let (event_rec_id, event_comp_id) =
         recording::recording_published_event_fields(events.pop_back());
     assert_eq!(event_rec_id, rec_id.to_address());
     assert_eq!(event_comp_id, composition_id.to_address());
-    assert_eq!(composition_royalty_rate_bps, 0);
-    assert_eq!(published_at_ms, 4343);
 
     cap
 }
@@ -104,19 +93,14 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
         ctx,
     );
     let rel_id = object::id(&rel);
-    let mut clock = clock::create_for_testing(ctx);
-    clock.set_for_testing(4444);
-    rel.publish(&cap, &clock);
-    clock.destroy_for_testing();
+    rel.publish(&cap);
 
     // Each publish appends exactly one release event (after one track event
     // per track), so popping the latest is safe with several releases.
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
-    let (event_rel_id, published_at_ms, nonce) =
-        release::release_published_event_fields(events.pop_back());
+    let (event_rel_id, nonce) = release::release_published_event_fields(events.pop_back());
     assert_eq!(event_rel_id, rel_id.to_address());
-    assert_eq!(published_at_ms, 4444);
     assert_eq!(nonce, 0);
     let mut track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
     let (track_rel_id, position, event_recording, event_split) =
@@ -138,10 +122,8 @@ fun composition_publish_twice_aborts() {
 
     scenario.next_tx(OWNER);
     let comp = scenario.take_shared<Composition<CompositionShare>>();
-    let clock = clock::create_for_testing(scenario.ctx());
-    comp.publish(&cap, &clock);
+    comp.publish(&cap);
 
-    clock.destroy_for_testing();
     destroy(cap);
     abort
 }
@@ -178,10 +160,8 @@ fun recording_publish_twice_aborts() {
 
     scenario.next_tx(OWNER);
     let rec = scenario.take_shared<Recording<RecordingShare>>();
-    let clock = clock::create_for_testing(scenario.ctx());
-    rec.publish(&cap, &clock);
+    rec.publish(&cap);
 
-    clock.destroy_for_testing();
     destroy(cap);
     abort
 }
@@ -195,10 +175,8 @@ fun release_publish_twice_aborts() {
 
     scenario.next_tx(OWNER);
     let rel = scenario.take_shared<Release>();
-    let clock = clock::create_for_testing(scenario.ctx());
-    rel.publish(&cap, &clock);
+    rel.publish(&cap);
 
-    clock.destroy_for_testing();
     destroy(cap);
     abort
 }

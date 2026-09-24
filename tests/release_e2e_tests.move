@@ -15,7 +15,6 @@ use musicos::release::{Self, Release, ReleaseRegistry};
 use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
-use sui::clock;
 use sui::event;
 use sui::test_scenario;
 
@@ -40,7 +39,7 @@ fun init_creates_shared_registry_and_emits_event() {
 
     scenario.next_tx(READER);
     let registry = scenario.take_shared<ReleaseRegistry>();
-    assert_eq!(registry.id().to_address(), event_registry_id);
+    assert_eq!(object::id(&registry).to_address(), event_registry_id);
     test_scenario::return_shared(registry);
     scenario.end();
 }
@@ -56,9 +55,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
         ROYALTY_RATE_BPS,
         scenario.ctx(),
     );
-    let clock = clock::create_for_testing(scenario.ctx());
-    comp.publish(&comp_cap, &clock); // shares the composition
-    clock.destroy_for_testing();
+    comp.publish(&comp_cap); // shares the composition
     destroy(comp_cap);
 
     // === Tx 2 (ARTIST): create and publish a recording of it ===
@@ -68,12 +65,10 @@ fun full_track_release_flow_publishes_at_derived_id() {
         object::id(&comp),
         scenario.ctx(),
     );
-    let clock = clock::create_for_testing(scenario.ctx());
-    rec.publish(&rec_cap, &clock); // shares the recording
-    clock.destroy_for_testing();
+    rec.publish(&rec_cap); // shares the recording
     let mut recording_events =
         event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
-    let (rec_event_recording_id, rec_event_composition_id, _, _) =
+    let (rec_event_recording_id, rec_event_composition_id) =
         recording::recording_published_event_fields(recording_events.pop_back());
     test_scenario::return_shared(comp);
 
@@ -102,16 +97,13 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(object::id(&rel), predicted_release_id);
     assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
-    let clock = clock::create_for_testing(scenario.ctx());
-    rel.publish(&rel_cap, &clock); // verifies track assignment, shares
-    clock.destroy_for_testing();
+    rel.publish(&rel_cap); // verifies track assignment, shares
 
     let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
     assert_eq!(published_events.length(), 1);
-    let (event_release_id, published_at_ms, event_nonce) =
+    let (event_release_id, event_nonce) =
         release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
-    assert_eq!(published_at_ms, 0);
     assert_eq!(event_nonce, NONCE);
     let track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
     assert_eq!(track_events.length(), 1);
@@ -190,8 +182,7 @@ fun publish_aborts_when_track_targets_a_different_release() {
     // ...but the release is created with nonce 2: different derived id.
     let mut registry = scenario.take_shared<ReleaseRegistry>();
     let (rel, rel_cap) = registry.new(vector[t], 2);
-    let clock = clock::create_for_testing(scenario.ctx());
-    rel.publish(&rel_cap, &clock); // aborts: track targets a different release
+    rel.publish(&rel_cap); // aborts: track targets a different release
 
     // Unreachable, but the compiler requires all non-drop values consumed.
     abort

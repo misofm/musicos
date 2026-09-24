@@ -164,6 +164,38 @@
 > composition X on this release?" on-chain from a `&Release` alone, without
 > the recordings; no consumer does this. Test count unchanged at 47.
 
+> **Design change (2026-09-24, unreleased, continued): final minimalism
+> pass.** (1) `RecordingPublishedEvent<RS>` now carries exactly
+> `recording_id`, `composition_id`, `published_at_ms`;
+> `composition_royalty_rate_bps` is dropped as derivable by joining
+> `composition_id` to the composition's `CompositionPublishedEvent`, whose
+> rate is immutable and is always emitted in or before the recording's
+> transaction. `RecordingState::Initialized` is therefore fieldless, like
+> `CompositionState::Initialized`; the economics of `recording::new` are
+> unchanged. (2) `release::release_registry_id` (with the
+> `ReleaseRegistry.id` alias) is removed as a wrapper of `object::id`, and
+> `release::release_admin_cap_release_id` (with the `ReleaseAdminCap.release_id`
+> alias) as an accessor with no consumer; `authorize` remains the way to
+> check a cap against a release. (3) `release::new` inlines its digest-input
+> helper. No authorization, digest or settlement behavior changes. Test
+> count at this change: 42 (five tests subsumed by others removed).
+
+> **Design change (2026-09-24, unreleased, continued): no publish
+> timestamp.** `Published` is now a unit variant of `CompositionState`,
+> `RecordingState` and `ReleaseState` (BCS: the single tag byte `0x01`);
+> `published_at_ms` is gone from `CompositionPublishedEvent`,
+> `RecordingPublishedEvent` and `ReleasePublishedEvent`; and the three
+> `publish` functions no longer take `&Clock`. Create-and-publish is atomic
+> and every transaction in a consensus commit reads the same `Clock` value,
+> which is the timestamp of the event's transaction envelope, so the stored
+> and emitted value duplicated the envelope and no on-chain code read it.
+> The events now carry exactly: `CompositionPublishedEvent<CS>`
+> `composition_id`, `royalty_rate_bps`; `RecordingPublishedEvent<RS>`
+> `recording_id`, `composition_id`; `ReleasePublishedEvent` `release_id`,
+> `nonce`. This supersedes "`publish` still takes the cap ... and the clock"
+> above. No authorization, digest or settlement behavior changes. Test count
+> unchanged at 42 (the state-layout test now asserts the bare variant tag).
+
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
 their admin capabilities, and the extension authorization contract that all
 `musicos-extensions/*` packages build on. Verdict: **safe to publish — no

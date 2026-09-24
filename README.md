@@ -44,7 +44,7 @@ rightsholders' consent.
 
 Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. Because the objects are key-only and cannot escape the creating transaction, only the final `Published` transition emits a lifecycle event.
 
-Published events are deliberately minimal: a field is carried only if an indexer reading musicos events alone would otherwise need an object lookup to obtain it and it matters to the business. `CompositionPublishedEvent` carries the composition id, its royalty rate and the publish timestamp; `RecordingPublishedEvent` carries the recording id, its composition id, the composition royalty rate applied at creation and the timestamp. Publishing a release emits one `ReleaseTrackAssignedEvent` per track, in tracklist order, carrying the release id, the track's zero-based position, its recording id and its `u16` split BPS; duplicate recordings and zero splits keep their positions, so indexers need no object reads to reconstruct the allocation. A track's composition is not repeated: it is the `composition_id` of that recording's `RecordingPublishedEvent`. `ReleasePublishedEvent` follows, carrying the release id, the timestamp and the creator's nonce. `ReleaseRegistryCreatedEvent`, emitted once at package publication, carries only the registry id. Everything else is derivable — the share type from the event's type argument, the sender from the transaction envelope, the share currency and treasury cap ids from `share::ShareInitializedEvent` in the same transaction, admin cap ids as derived addresses of the object id, share amounts from the fixed supply and the rate, the track count from the number of track events, the registry id from the package's `ReleaseRegistryCreatedEvent`, and the release digest (and from it the release id, as a derived address) by hashing the track events' recordings and splits with the nonce.
+Published events are deliberately minimal: a field is carried only if an indexer reading musicos events alone would otherwise need an object lookup to obtain it and it matters to the business. `CompositionPublishedEvent` carries the composition id and its royalty rate; `RecordingPublishedEvent` carries the recording id and its composition id; the royalty rate applied at creation is the immutable rate of that composition's `CompositionPublishedEvent`. Publishing a release emits one `ReleaseTrackAssignedEvent` per track, in tracklist order, carrying the release id, the track's zero-based position, its recording id and its `u16` split BPS; duplicate recordings and zero splits keep their positions, so indexers need no object reads to reconstruct the allocation. A track's composition is not repeated: it is the `composition_id` of that recording's `RecordingPublishedEvent`. `ReleasePublishedEvent` follows, carrying the release id and the creator's nonce. `ReleaseRegistryCreatedEvent`, emitted once at package publication, carries only the registry id. Everything else is derivable — the share type from the event's type argument, the sender and publish time from the transaction envelope (so `publish` takes no `Clock`), the share currency and treasury cap ids from `share::ShareInitializedEvent` in the same transaction, admin cap ids as derived addresses of the object id, share amounts from the fixed supply and the composition's rate, the track count from the number of track events, the registry id from the package's `ReleaseRegistryCreatedEvent`, and the release digest (and from it the release id, as a derived address) by hashing the track events' recordings and splits with the nonce.
 
 ### Ownership
 
@@ -84,15 +84,20 @@ sui move test
 > **Unreleased changes:** this source drops the `CompositionShare` type
 > parameter from `Recording` (now `Recording<RecordingShare>`) and from
 > `RecordingPublishedEvent`; the composition link is carried by the
-> `composition_id` field alone. It also slims `CompositionPublishedEvent` and
-> `RecordingPublishedEvent` to identity, rate and timestamp, and
-> `ReleasePublishedEvent` to identity, timestamp and nonce, with the tracklist
-> moved to one `ReleaseTrackAssignedEvent` per track (see Lifecycle), drops
+> `composition_id` field alone. It also slims `CompositionPublishedEvent` to
+> identity and rate, `RecordingPublishedEvent` to identity and composition id
+> (the rate is the composition event's), and `ReleasePublishedEvent` to
+> identity and nonce, with the tracklist moved to one
+> `ReleaseTrackAssignedEvent` per track (see Lifecycle), drops the publish
+> timestamp from the `Published` states and the `Clock` parameter from every
+> `publish` (the publish time is the event's transaction timestamp), drops
 > `composition_id` from `Track` (reach it through the recording), removes
 > the 255-track limit, reduces the `Initialized` state variants to what `publish` needs,
-> and removes the composition and release `title` fields (`composition::new`
+> removes the composition and release `title` fields (`composition::new`
 > and `release::new` no longer take a title; `composition::title()` and
-> `release::title()` are gone). These are upgrade-incompatible changes that
+> `release::title()` are gone), and removes `release::release_registry_id`
+> (use `object::id`) and `release::release_admin_cap_release_id` (unused;
+> `release::authorize` checks a cap against a release). These are upgrade-incompatible changes that
 > will require a fresh publication, superseding the Mainnet and Testnet packages
 > currently recorded in `Published.toml`.
 

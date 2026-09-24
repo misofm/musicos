@@ -23,7 +23,6 @@ module musicos::release;
 use bps::bps;
 use musicos::track::Track;
 use sui::bcs::to_bytes;
-use sui::clock::Clock;
 use sui::derived_object::{Self, claim};
 use sui::event::emit;
 use sui::hash::blake2b256;
@@ -74,7 +73,7 @@ public struct ReleaseAdminCap has key, store {
     release_id: ID,
 }
 
-// Derivation key for ReleaseAdminCap.
+/// Derivation key for `ReleaseAdminCap`.
 public struct ReleaseAdminCapKey() has copy, drop, store;
 
 // === Enums ===
@@ -87,10 +86,7 @@ public enum ReleaseState has drop, store {
         nonce: u256,
     },
     /// Published and immutable.
-    Published(
-        /// Timestamp (ms) when published.
-        u64,
-    ),
+    Published,
 }
 
 // === Events ===
@@ -109,13 +105,12 @@ public struct ReleaseTrackAssignedEvent has copy, drop {
 }
 
 /// Emitted once when a release is published, after its track events:
-/// identity, timestamp, and the creator's nonce. Everything else (sender,
-/// admin cap address, track count, registry id, and the digest — see
-/// `calculate_release_digest`) is derivable from the transaction and the
-/// same-transaction events.
+/// identity and the creator's nonce. The publish time is the event's
+/// transaction timestamp. Everything else (sender, admin cap address, track
+/// count, registry id, and the digest — see `calculate_release_digest`) is
+/// derivable from the transaction and the same-transaction events.
 public struct ReleasePublishedEvent has copy, drop {
     release_id: address,
-    published_at_ms: u64,
     nonce: u256,
 }
 
@@ -123,11 +118,6 @@ public struct ReleasePublishedEvent has copy, drop {
 public struct ReleaseRegistryCreatedEvent has copy, drop {
     registry_id: address,
 }
-
-// === Method Aliases ===
-
-public use fun release_admin_cap_release_id as ReleaseAdminCap.release_id;
-public use fun release_registry_id as ReleaseRegistry.id;
 
 // === Public Functions ===
 
@@ -155,13 +145,16 @@ public fun new(
 ): (Release, ReleaseAdminCap) {
     assert!(!tracks.is_empty(), ENoTracks);
 
-    let (recording_ids, track_split_values, split_sum) = extract_digest_inputs(&tracks);
+    // The digest pre-image is the stored shape: ids and splits in tracklist
+    // order, splits widened to u64.
+    let recording_ids = tracks.map_ref!(|track| track.recording_id());
+    let track_split_values = tracks.map_ref!(|track| track.split_bps().value() as u64);
+    let split_sum = track_split_values.fold!(0u64, |sum, value| sum + value);
     assert!(split_sum == (bps::denominator!() as u64), EInvalidTrackSplitsSum);
 
     let release_digest = calculate_release_digest(recording_ids, track_split_values, nonce);
-    let release_uid = claim(&mut self.id, ReleaseKey(release_digest));
     let mut release = Release {
-        id: release_uid,
+        id: claim(&mut self.id, ReleaseKey(release_digest)),
         state: ReleaseState::Initialized { nonce },
         tracks,
     };
@@ -186,38 +179,24 @@ public fun derive_target_release_id(
     derived_object::derive_address(self.id.to_inner(), ReleaseKey(release_digest)).to_id()
 }
 
-/// The canonical registry's object id — the derivation parent used by `new`
-/// and `derive_target_release_id`. Exposed as the `ReleaseRegistry.id()` method.
-public fun release_registry_id(self: &ReleaseRegistry): ID {
-    self.id.to_inner()
-}
-
 /// Publishes the release: verifies every track targets this release (emitting
 /// one `ReleaseTrackAssignedEvent` each), shares it, and emits
 /// `ReleasePublishedEvent`. Aborts with `EUnauthorized` on a mismatched cap
 /// and `ENotInitializedState` unless `Initialized`.
-public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
+public fun publish(mut self: Release, cap: &ReleaseAdminCap) {
     self.authorize(cap);
 
     match (&self.state) {
         ReleaseState::Initialized { nonce } => {
             let nonce = *nonce;
-            // Verifies each track's target and emits one track event per track.
             self.assign_tracks();
-
-            let published_at_ms = clock.timestamp_ms();
-
-            self.state = ReleaseState::Published(published_at_ms);
+            self.state = ReleaseState::Published;
 
             let release_id = object::id_address(&self);
 
             transfer::share_object(self);
 
-            emit(ReleasePublishedEvent {
-                release_id,
-                published_at_ms,
-                nonce,
-            });
+            emit(ReleasePublishedEvent { release_id, nonce });
         },
         _ => abort ENotInitializedState,
     }
@@ -236,11 +215,6 @@ public fun tracks(self: &Release): &vector<Track> {
     &self.tracks
 }
 
-/// Returns the release ID associated with the admin capability.
-public fun release_admin_cap_release_id(cap: &ReleaseAdminCap): ID {
-    cap.release_id
-}
-
 /// Read access to the release's UID (dynamic fields).
 public fun uid(self: &Release): &UID {
     &self.id
@@ -251,17 +225,6 @@ public fun uid(self: &Release): &UID {
 public fun uid_mut(self: &mut Release, cap: &ReleaseAdminCap): &mut UID {
     self.authorize(cap);
     &mut self.id
-}
-
-/// Recording ids, split values, and split sum, in tracklist order: the digest
-/// pre-image is the stored shape.
-fun extract_digest_inputs(tracks: &vector<Track>): (vector<ID>, vector<u64>, u64) {
-    let recording_ids = tracks.map_ref!(|track| track.recording_id());
-    // bps::value() returns u16; widen to u64 to preserve digest format.
-    let track_split_values = tracks.map_ref!(|track| track.split_bps().value() as u64);
-    let split_sum = track_split_values.fold!(0u64, |accumulator, value| accumulator + value);
-
-    (recording_ids, track_split_values, split_sum)
 }
 
 /// The release digest:
@@ -323,9 +286,9 @@ public fun release_registry_created_event_fields(event: ReleaseRegistryCreatedEv
 #[test_only]
 public fun release_published_event_fields(
     event: ReleasePublishedEvent,
-): (address, u64, u256) {
-    let ReleasePublishedEvent { release_id, published_at_ms, nonce } = event;
-    (release_id, published_at_ms, nonce)
+): (address, u256) {
+    let ReleasePublishedEvent { release_id, nonce } = event;
+    (release_id, nonce)
 }
 
 // State predicates are test-only: create-and-publish is atomic, so every
@@ -342,14 +305,14 @@ public fun is_initialized_state(self: &Release): bool {
 #[test_only]
 public fun is_published_state(self: &Release): bool {
     match (&self.state) {
-        ReleaseState::Published(_) => true,
+        ReleaseState::Published => true,
         _ => false,
     }
 }
 
 #[test_only]
-public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
-    to_bytes(&ReleaseState::Published(timestamp_ms))
+public fun published_state_bcs_bytes(): vector<u8> {
+    to_bytes(&ReleaseState::Published)
 }
 
 #[test_only]
@@ -357,21 +320,19 @@ public fun new_for_testing(
     tracks: vector<Track>,
     ctx: &mut TxContext,
 ): (Release, ReleaseAdminCap) {
-    use musicos::track;
-
     let mut release = Release {
         id: object::new(ctx),
         state: ReleaseState::Initialized { nonce: 0 },
         tracks,
     };
 
-    // Patch all tracks to target this release so publish() can assign them.
+    // Retarget every track at this release so `publish` can assign it.
     let release_id = object::id(&release);
-    release.tracks.do_mut!(|t| track::set_target_release_id_for_testing(t, release_id));
+    release.tracks.do_mut!(|track| track.set_target_release_id_for_testing(release_id));
 
     let release_admin_cap = ReleaseAdminCap {
         id: claim(&mut release.id, ReleaseAdminCapKey()),
-        release_id: object::id(&release),
+        release_id,
     };
 
     (release, release_admin_cap)

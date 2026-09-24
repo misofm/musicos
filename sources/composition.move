@@ -22,7 +22,6 @@ module musicos::composition;
 use bps::bps::{Self, BPS};
 use share::share;
 use sui::balance::Balance;
-use sui::clock::Clock;
 use sui::coin::TreasuryCap;
 use sui::coin_registry::Currency;
 use sui::derived_object::claim;
@@ -65,22 +64,19 @@ public enum CompositionState has drop, store {
     /// Created but not yet published.
     Initialized,
     /// Published and immutable.
-    Published(
-        /// Timestamp (ms) when published.
-        u64,
-    ),
+    Published,
 }
 
 // === Events ===
 
-/// Emitted once when a composition is published: identity, immutable royalty
-/// rate, and timestamp. Everything else (share type, sender, currency and
-/// treasury cap ids, admin cap address, share supply) is derivable from the
-/// transaction and the same-transaction `share::ShareInitializedEvent`.
+/// Emitted once when a composition is published: identity and immutable
+/// royalty rate. The publish time is the event's transaction timestamp.
+/// Everything else (share type, sender, currency and treasury cap ids, admin
+/// cap address, share supply) is derivable from the transaction and the
+/// same-transaction `share::ShareInitializedEvent`.
 public struct CompositionPublishedEvent<phantom CompositionShare> has copy, drop {
     composition_id: address,
     royalty_rate_bps: u16,
-    published_at_ms: u64,
 }
 
 // === Public Functions ===
@@ -126,12 +122,10 @@ public fun new<CompositionShare>(
 public fun publish<CompositionShare>(
     mut self: Composition<CompositionShare>,
     _: &CompositionAdminCap<CompositionShare>,
-    clock: &Clock,
 ) {
     match (&self.state) {
         CompositionState::Initialized => {
-            let published_at_ms = clock.timestamp_ms();
-            self.state = CompositionState::Published(published_at_ms);
+            self.state = CompositionState::Published;
 
             let composition_id = object::id_address(&self);
             let royalty_rate_bps = self.royalty_rate.value();
@@ -141,7 +135,6 @@ public fun publish<CompositionShare>(
             emit(CompositionPublishedEvent<CompositionShare> {
                 composition_id,
                 royalty_rate_bps,
-                published_at_ms,
             });
         },
         _ => abort ENotInitializedState,
@@ -188,14 +181,14 @@ public fun is_initialized_state<CompositionShare>(self: &Composition<Composition
 #[test_only]
 public fun is_published_state<CompositionShare>(self: &Composition<CompositionShare>): bool {
     match (&self.state) {
-        CompositionState::Published(_) => true,
+        CompositionState::Published => true,
         _ => false,
     }
 }
 
 #[test_only]
-public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
-    to_bytes(&CompositionState::Published(timestamp_ms))
+public fun published_state_bcs_bytes(): vector<u8> {
+    to_bytes(&CompositionState::Published)
 }
 
 #[test_only]
@@ -220,11 +213,7 @@ public fun new_for_testing<CompositionShare>(
 #[test_only]
 public fun composition_published_event_fields<CompositionShare>(
     event: CompositionPublishedEvent<CompositionShare>,
-): (address, u16, u64) {
-    let CompositionPublishedEvent {
-        composition_id,
-        royalty_rate_bps,
-        published_at_ms,
-    } = event;
-    (composition_id, royalty_rate_bps, published_at_ms)
+): (address, u16) {
+    let CompositionPublishedEvent { composition_id, royalty_rate_bps } = event;
+    (composition_id, royalty_rate_bps)
 }
