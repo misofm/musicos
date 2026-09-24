@@ -79,6 +79,10 @@ fun full_track_release_flow_publishes_at_derived_id() {
     let clock = sui::clock::create_for_testing(scenario.ctx());
     rec.publish(&rec_cap, &clock); // shares the recording
     clock.destroy_for_testing();
+    let mut recording_events =
+        event::events_by_type<recording::RecordingPublishedEvent<RecordingShare>>();
+    let (rec_event_recording_id, rec_event_composition_id, _, _) =
+        recording::recording_published_event_fields(recording_events.pop_back());
     test_scenario::return_shared(comp);
 
     // === Tx 3 (ARTIST): consent to the predicted release id via track::new ===
@@ -112,21 +116,28 @@ fun full_track_release_flow_publishes_at_derived_id() {
 
     let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
     assert_eq!(published_events.length(), 1);
-    let (event_release_id, published_at_ms, event_nonce, track_allocations) =
+    let (event_release_id, published_at_ms, event_nonce) =
         release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
     assert_eq!(published_at_ms, 0);
     assert_eq!(event_nonce, NONCE);
-    assert_eq!(track_allocations.length(), 1);
-    let (event_composition, event_recording, event_split) =
-        release::track_allocation_fields(track_allocations[0]);
+    let track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
+    assert_eq!(track_events.length(), 1);
+    let (track_release_id, position, event_recording, event_split) =
+        release::release_track_assigned_event_fields(track_events[0]);
+    assert_eq!(track_release_id, event_release_id);
+    assert_eq!(position, 0);
     assert_eq!(event_recording, recording_id.to_address());
-    assert_eq!(event_composition, composition_id.to_address());
     assert_eq!(event_split, 10000);
-    // The event carries no digest or registry id: both are reconstructible
-    // from the payload alone. Re-deriving the release id from nothing but the
-    // event's allocation and nonce (under the registry announced by
-    // `ReleaseRegistryCreatedEvent`) reproduces `release_id`.
+    // The track event carries no composition id: joining its recording id to
+    // that recording's `RecordingPublishedEvent` yields it.
+    assert_eq!(event_recording, rec_event_recording_id);
+    assert_eq!(rec_event_composition_id, composition_id.to_address());
+    // The events carry no digest or registry id: both are reconstructible
+    // from the payloads alone. Re-deriving the release id from nothing but the
+    // track events' recordings and splits and the release event's nonce (under
+    // the registry announced by `ReleaseRegistryCreatedEvent`) reproduces
+    // `release_id`.
     assert_eq!(
         registry.derive_target_release_id(
             vector[event_recording.to_id()],

@@ -44,10 +44,7 @@ rightsholders' consent.
 
 Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. Because the objects are key-only and cannot escape the creating transaction, only the final `Published` transition emits a lifecycle event.
 
-Published events are deliberately minimal: a field is carried only if an indexer reading musicos events alone would otherwise need an object lookup to obtain it and it matters to the business. `CompositionPublishedEvent` carries the composition id, its royalty rate and the publish timestamp; `RecordingPublishedEvent` carries the recording id, its composition id, the composition royalty rate applied at creation and the timestamp. `ReleasePublishedEvent` carries the release id, the timestamp, the creator's nonce and one ordered `track_allocations` vector of
-composition IDs, recording IDs, and `u16` split BPS. Duplicate recordings and zero
-splits retain their positions; indexers need no object reads to reconstruct the
-allocation. Each entry is 66 BCS bytes (at most 16,832 bytes for the vector). `ReleaseRegistryCreatedEvent`, emitted once at package publication, carries only the registry id. Everything else is derivable — the share type from the event's type argument, the sender from the transaction envelope, the share currency and treasury cap ids from `share::ShareInitializedEvent` in the same transaction, admin cap ids as derived addresses of the object id, share amounts from the fixed supply and the rate, the track count from the allocation's length, the registry id from the package's `ReleaseRegistryCreatedEvent`, and the release digest (and from it the release id, as a derived address) by hashing the allocation and nonce.
+Published events are deliberately minimal: a field is carried only if an indexer reading musicos events alone would otherwise need an object lookup to obtain it and it matters to the business. `CompositionPublishedEvent` carries the composition id, its royalty rate and the publish timestamp; `RecordingPublishedEvent` carries the recording id, its composition id, the composition royalty rate applied at creation and the timestamp. Publishing a release emits one `ReleaseTrackAssignedEvent` per track, in tracklist order, carrying the release id, the track's zero-based position, its recording id and its `u16` split BPS; duplicate recordings and zero splits keep their positions, so indexers need no object reads to reconstruct the allocation. A track's composition is not repeated: it is the `composition_id` of that recording's `RecordingPublishedEvent`. `ReleasePublishedEvent` follows, carrying the release id, the timestamp and the creator's nonce. `ReleaseRegistryCreatedEvent`, emitted once at package publication, carries only the registry id. Everything else is derivable — the share type from the event's type argument, the sender from the transaction envelope, the share currency and treasury cap ids from `share::ShareInitializedEvent` in the same transaction, admin cap ids as derived addresses of the object id, share amounts from the fixed supply and the rate, the track count from the number of track events, the registry id from the package's `ReleaseRegistryCreatedEvent`, and the release digest (and from it the release id, as a derived address) by hashing the track events' recordings and splits with the nonce.
 
 ### Ownership
 
@@ -89,8 +86,10 @@ sui move test
 > `RecordingPublishedEvent`; the composition link is carried by the
 > `composition_id` field alone. It also slims `CompositionPublishedEvent` and
 > `RecordingPublishedEvent` to identity, rate and timestamp, and
-> `ReleasePublishedEvent` to identity, timestamp, nonce and allocation (see
-> Lifecycle), reduces the `Initialized` state variants to what `publish` needs,
+> `ReleasePublishedEvent` to identity, timestamp and nonce, with the tracklist
+> moved to one `ReleaseTrackAssignedEvent` per track (see Lifecycle), drops
+> `composition_id` from `Track` (reach it through the recording), removes
+> the 255-track limit, reduces the `Initialized` state variants to what `publish` needs,
 > and removes the composition and release `title` fields (`composition::new`
 > and `release::new` no longer take a title; `composition::title()` and
 > `release::title()` are gone). These are upgrade-incompatible changes that

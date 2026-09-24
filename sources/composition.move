@@ -86,7 +86,7 @@ public struct CompositionAdminCapKey() has copy, drop, store;
 // === Enums ===
 
 /// Lifecycle state of a composition.
-public enum CompositionState has copy, drop, store {
+public enum CompositionState has drop, store {
     /// Composition is initialized but not published. Carries nothing:
     /// everything `publish` needs is an embedded field or a `publish`
     /// argument.
@@ -174,7 +174,7 @@ public fun publish<CompositionShare>(
     _: &CompositionAdminCap<CompositionShare>,
     clock: &Clock,
 ) {
-    match (self.state) {
+    match (&self.state) {
         CompositionState::Initialized => {
             let published_at_ms = clock.timestamp_ms();
             self.state = CompositionState::Published(published_at_ms);
@@ -230,7 +230,7 @@ public fun uid_mut<CompositionShare>(
 
 #[test_only]
 public fun is_initialized_state<CompositionShare>(self: &Composition<CompositionShare>): bool {
-    match (self.state) {
+    match (&self.state) {
         CompositionState::Initialized => true,
         _ => false,
     }
@@ -238,7 +238,7 @@ public fun is_initialized_state<CompositionShare>(self: &Composition<Composition
 
 #[test_only]
 public fun is_published_state<CompositionShare>(self: &Composition<CompositionShare>): bool {
-    match (self.state) {
+    match (&self.state) {
         CompositionState::Published(_) => true,
         _ => false,
     }

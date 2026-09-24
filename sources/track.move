@@ -6,13 +6,9 @@
 ///
 /// A `Track` is the minimal positioned (recording, revenue-share) pair:
 /// - `recording_id` — the routing target for the track's revenue, and the
-///   handle through which all other metadata (title, cover art, the
-///   recording's share-type identity, and — via the recording's
-///   `composition_id` — the composition's) is reached.
-/// - `composition_id` — the identity of the recording's underlying work, so
-///   the composition–recording–release graph is walkable on-chain from the
-///   release alone. Move cannot chase an ID to an object, so this edge is
-///   unreachable in a track loop unless embedded here.
+///   handle through which everything else about the track is reached: the
+///   recording's share-type identity, its extension metadata, and — via the
+///   recording's `composition_id` — its composition.
 /// - `split_bps` — this track's share of the release's revenue; genuinely
 ///   release-specific and not derivable from the recording.
 /// - `state` — the assign-once lifecycle that carries (then sheds) the
@@ -20,11 +16,12 @@
 ///   `TrackState`.
 ///
 /// `Track` is intentionally monomorphic: a `Release` holds a `vector<Track>`
-/// of tracks from many different recordings/compositions, so it cannot be
-/// generic over their share types. It stores no title, cover art, or
-/// share-type — those are consumed off-chain and derived from the recording
-/// via `recording_id`; a `Track` embeds exactly the facts on-chain consumers
-/// cannot reach any other way.
+/// of tracks from many different recordings, so it cannot be generic over
+/// their share types. It stores nothing derivable from the recording — not
+/// its share type, its metadata, or its composition, whose single source of
+/// truth is the recording's own immutable `composition_id`. Revenue routes to
+/// the recording alone (the composition is paid through its recording-share
+/// ownership), so no track consumer needs the composition to act.
 module musicos::track;
 
 use bps::bps::{Self, BPS};
@@ -43,13 +40,6 @@ const EAlreadyAssigned: u64 = 1;
 public struct Track has drop, store {
     /// Current state of the track.
     state: TrackState,
-    /// ID of the composition underlying this track's recording. An identity
-    /// and membership handle — NOT a revenue routing target: the composition
-    /// is paid through its recording-share ownership (settled at
-    /// `recording::new`), so a track routes its full split to the recording.
-    /// Immutable and safe to denormalize: the recording↔composition pairing
-    /// is fixed at recording creation.
-    composition_id: ID,
     /// ID of the recording on this track. The routing target for the track's
     /// revenue; also the handle a consumer uses to fetch the recording (whose
     /// type carries its share-type identity, and whose `composition_id` leads
@@ -70,7 +60,7 @@ public struct Track has drop, store {
 /// owner's consent to the exact release configuration). At publish the release
 /// verifies the match and transitions the track to `Assigned`, which carries
 /// no id — shedding the 32-byte commitment once it has served its purpose.
-public enum TrackState has copy, drop, store {
+public enum TrackState has drop, store {
     /// Track has been created but not yet assigned to a release. Carries the
     /// target release id the consent committed to at creation.
     Unassigned(ID),
@@ -87,13 +77,6 @@ public enum TrackState has copy, drop, store {
 /// then silently discarded, and indexers would be unable to distinguish
 /// pending from dead. Pre-publish observability is the responsibility of
 /// whatever wraps the track (see below).
-///
-/// The composition id is copied from the `&Recording` argument, with no
-/// `Composition` argument and no runtime check: `recording::new` sets
-/// `composition_id` from a real `&Composition` and the field is immutable
-/// thereafter, so the recording is the authority on its own composition — a
-/// caller-supplied `Composition` could only ever agree with it or be
-/// rejected, and there is nothing for a track to add.
 ///
 /// ### What creating a track consents to
 ///
@@ -118,10 +101,9 @@ public enum TrackState has copy, drop, store {
 /// wrapping extension encodes — visible in its type, not in core.
 ///
 /// `recording` shares its `RecordingShare` with the cap, which binds cap to
-/// recording at compile time, and is read for its own id and its embedded
-/// composition id: the monomorphic `Track` must store both *addresses* — the
-/// recording's for revenue routing, the composition's for graph reachability
-/// — and an address cannot come from a phantom.
+/// recording at compile time, and is read for its id: the monomorphic `Track`
+/// must store the recording's *address* for revenue routing, and an address
+/// cannot come from a phantom.
 public fun new<RecordingShare>(
     _: &RecordingAdminCap<RecordingShare>,
     recording: &Recording<RecordingShare>,
@@ -130,7 +112,6 @@ public fun new<RecordingShare>(
 ): Track {
     Track {
         state: TrackState::Unassigned(target_release_id),
-        composition_id: recording.composition_id(),
         recording_id: object::id(recording),
         split_bps: bps::new(track_split_bps_value),
     }
@@ -143,15 +124,6 @@ public fun recording_id(self: &Track): ID {
     self.recording_id
 }
 
-/// Returns the ID of the composition underlying this track's recording.
-/// An identity/membership handle (e.g. "is this composition on this
-/// release?") — not a revenue routing target: the composition is paid via
-/// its recording-share ownership, and a track routes its full split to the
-/// recording.
-public fun composition_id(self: &Track): ID {
-    self.composition_id
-}
-
 /// Returns this track's share of the release's revenue (in basis points).
 public fun split_bps(self: &Track): BPS {
     self.split_bps
@@ -161,8 +133,8 @@ public fun split_bps(self: &Track): BPS {
 /// Aborts if the track is `Assigned`: an assigned track only exists inside
 /// a published release, so its release is the object you fetched it from.
 public fun target_release_id(self: &Track): ID {
-    match (self.state) {
-        TrackState::Unassigned(target_release_id) => target_release_id,
+    match (&self.state) {
+        TrackState::Unassigned(target_release_id) => *target_release_id,
         TrackState::Assigned => abort EAlreadyAssigned,
     }
 }
@@ -172,9 +144,9 @@ public fun target_release_id(self: &Track): ID {
 /// Assigns the track to a release by verifying the release UID matches
 /// the track's target release ID. Can only be called once per track.
 public(package) fun assign(self: &mut Track, release_uid: &UID) {
-    match (self.state) {
+    match (&self.state) {
         TrackState::Unassigned(target_release_id) => {
-            assert!(release_uid.to_inner() == target_release_id, EUnauthorizedAssignment);
+            assert!(release_uid.to_inner() == *target_release_id, EUnauthorizedAssignment);
             self.state = TrackState::Assigned;
         },
         TrackState::Assigned => abort EAlreadyAssigned,
@@ -195,24 +167,22 @@ public(package) fun assign(self: &mut Track, release_uid: &UID) {
 
 #[test_only]
 public fun is_assigned_state(self: &Track): bool {
-    match (self.state) { TrackState::Assigned => true, _ => false }
+    match (&self.state) { TrackState::Assigned => true, _ => false }
 }
 
 #[test_only]
 public fun is_unassigned_state(self: &Track): bool {
-    match (self.state) { TrackState::Unassigned(_) => true, _ => false }
+    match (&self.state) { TrackState::Unassigned(_) => true, _ => false }
 }
 
 #[test_only]
 public fun new_for_testing(
-    composition_id: ID,
     recording_id: ID,
     target_release_id: ID,
     split_bps_value: u16,
 ): Track {
     Track {
         state: TrackState::Unassigned(target_release_id),
-        composition_id,
         recording_id,
         split_bps: bps::new(split_bps_value),
     }

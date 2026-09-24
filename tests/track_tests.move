@@ -27,12 +27,11 @@ const EAlreadyAssigned: u64 = 1;
 #[test]
 fun assign_transitions_unassigned_to_assigned() {
     let ctx = &mut tx_context::dummy();
-    let comp_id = test_helpers::fake_id(ctx);
     let rec_id = test_helpers::fake_id(ctx);
     let release_uid = object::new(ctx);
     let release_id = release_uid.to_inner();
 
-    let mut t = track::new_for_testing(comp_id, rec_id, release_id, 10000);
+    let mut t = track::new_for_testing(rec_id, release_id, 10000);
     assert!(t.is_unassigned_state());
 
     track::assign(&mut t, &release_uid);
@@ -52,12 +51,11 @@ fun assign_transitions_unassigned_to_assigned() {
 #[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
 fun assign_twice_aborts() {
     let ctx = &mut tx_context::dummy();
-    let comp_id = test_helpers::fake_id(ctx);
     let rec_id = test_helpers::fake_id(ctx);
     let release_uid = object::new(ctx);
     let release_id = release_uid.to_inner();
 
-    let mut t = track::new_for_testing(comp_id, rec_id, release_id, 10000);
+    let mut t = track::new_for_testing(rec_id, release_id, 10000);
     track::assign(&mut t, &release_uid);
     track::assign(&mut t, &release_uid); // already Assigned: aborts
 
@@ -69,11 +67,10 @@ fun assign_twice_aborts() {
 #[test]
 fun target_release_id_reads_unassigned_commitment() {
     let ctx = &mut tx_context::dummy();
-    let comp_id = test_helpers::fake_id(ctx);
     let rec_id = test_helpers::fake_id(ctx);
     let target_id = test_helpers::fake_id(ctx);
 
-    let t = track::new_for_testing(comp_id, rec_id, target_id, 5000);
+    let t = track::new_for_testing(rec_id, target_id, 5000);
     assert_eq!(t.target_release_id(), target_id);
 
     destroy(t);
@@ -87,12 +84,11 @@ fun target_release_id_reads_unassigned_commitment() {
 #[test, expected_failure(abort_code = EAlreadyAssigned, location = musicos::track)]
 fun target_release_id_on_assigned_track_aborts() {
     let ctx = &mut tx_context::dummy();
-    let comp_id = test_helpers::fake_id(ctx);
     let rec_id = test_helpers::fake_id(ctx);
     let release_uid = object::new(ctx);
     let release_id = release_uid.to_inner();
 
-    let mut t = track::new_for_testing(comp_id, rec_id, release_id, 10000);
+    let mut t = track::new_for_testing(rec_id, release_id, 10000);
     track::assign(&mut t, &release_uid);
 
     let _ = t.target_release_id(); // Assigned: aborts

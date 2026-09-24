@@ -48,9 +48,10 @@
 ///
 /// The recording's link to its parent composition is the embedded
 /// `composition_id`: set from the `&Composition` passed to `new`, immutable
-/// thereafter, and the handle through which consumers holding only
-/// `&Recording` — or a bare `Track` — reach the composition (and, through it,
-/// the composition's own share type). `Recording` deliberately carries no
+/// thereafter, and the single source of truth for which composition a
+/// recording — and so every track of it — embodies: consumers holding a
+/// `&Recording` or a track's `recording_id` reach the composition (and,
+/// through it, the composition's own share type) through it. `Recording` deliberately carries no
 /// `CompositionShare` type parameter. The composition share type is already a
 /// function of the recording share type — `new` consumes the recording
 /// share's `TreasuryCap`, so each `RecordingShare` backs exactly one
@@ -124,7 +125,7 @@ public struct RecordingAdminCapKey() has copy, drop, store;
 // === Enums ===
 
 /// Lifecycle state of a recording.
-public enum RecordingState has copy, drop, store {
+public enum RecordingState has drop, store {
     /// Recording is initialized but not published. Carries only what
     /// `publish` needs and cannot otherwise reach: the composition royalty
     /// rate `new` applied — `publish` does not receive the composition, and
@@ -268,8 +269,9 @@ public fun publish<RecordingShare>(
     _: &RecordingAdminCap<RecordingShare>,
     clock: &Clock,
 ) {
-    match (self.state) {
+    match (&self.state) {
         RecordingState::Initialized { composition_royalty_rate_bps } => {
+            let composition_royalty_rate_bps = *composition_royalty_rate_bps;
             // Set the recording's publish timestamp.
             let published_at_ms = clock.timestamp_ms();
             self.state = RecordingState::Published(published_at_ms);
@@ -328,12 +330,12 @@ public fun uid_mut<RecordingShare>(
 
 #[test_only]
 public fun is_initialized_state<RecordingShare>(self: &Recording<RecordingShare>): bool {
-    match (self.state) { RecordingState::Initialized { .. } => true, _ => false }
+    match (&self.state) { RecordingState::Initialized { .. } => true, _ => false }
 }
 
 #[test_only]
 public fun is_published_state<RecordingShare>(self: &Recording<RecordingShare>): bool {
-    match (self.state) { RecordingState::Published(_) => true, _ => false }
+    match (&self.state) { RecordingState::Published(_) => true, _ => false }
 }
 
 #[test_only]

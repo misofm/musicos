@@ -93,11 +93,9 @@ fun publish_recording(
 /// disambiguate them — a release carries no title or other naming field.
 fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAdminCap, ID) {
     let ctx = scenario.ctx();
-    let composition_id = test_helpers::fake_id(ctx);
     let recording_id = test_helpers::fake_id(ctx);
     let (rel, cap) = release::new_for_testing(
         vector[musicos::track::new_for_testing(
-            composition_id,
             recording_id,
             test_helpers::fake_id(ctx),
             10000,
@@ -111,20 +109,21 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
     clock.destroy_for_testing();
 
     // Popping the most recent event is safe even when a test publishes more
-    // than one release, since each publish appends exactly one event.
-    // Event payload captures the identity, the timestamp, the nonce, and the
-    // complete ordered allocation.
+    // than one release, since each publish appends exactly one release event
+    // (after one track event per track). The release event captures the
+    // identity, the timestamp and the nonce; the track event the allocation.
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
-    let (event_rel_id, published_at_ms, nonce, track_allocations) =
+    let (event_rel_id, published_at_ms, nonce) =
         release::release_published_event_fields(events.pop_back());
     assert_eq!(event_rel_id, rel_id.to_address());
     assert_eq!(published_at_ms, 4444);
     assert_eq!(nonce, 0);
-    assert_eq!(track_allocations.length(), 1);
-    let (event_composition, event_recording, event_split) =
-        release::track_allocation_fields(track_allocations[0]);
-    assert_eq!(event_composition, composition_id.to_address());
+    let mut track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
+    let (track_rel_id, position, event_recording, event_split) =
+        release::release_track_assigned_event_fields(track_events.pop_back());
+    assert_eq!(track_rel_id, rel_id.to_address());
+    assert_eq!(position, 0);
     assert_eq!(event_recording, recording_id.to_address());
     assert_eq!(event_split, 10000);
 

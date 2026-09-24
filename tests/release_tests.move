@@ -18,16 +18,11 @@ use std::unit_test::{assert_eq, destroy};
 
 // Error codes from release.move
 const EInvalidTrackSplitsSum: u64 = 20;
-const EMaxTracksExceeded: u64 = 31;
 const ENoTracks: u64 = 51;
-
-// Must match release.move
-const MAX_TRACKS: u64 = 255;
 
 /// Helper to create an ordered tracklist of n tracks sharing splits evenly.
 fun test_tracks(track_count: u64, split_bps: u16, ctx: &mut TxContext): vector<track::Track> {
     vector::tabulate!(track_count, |_index| track::new_for_testing(
-        test_helpers::fake_id(ctx),
         test_helpers::fake_id(ctx),
         test_helpers::fake_id(ctx),
         split_bps,
@@ -52,28 +47,6 @@ fun composition_and_recording(
 
 // A release carries no title (display titles live in the `release_metadata`
 // extension), so there is no title-length or empty-title validation to test.
-
-// === Max Tracks ===
-
-#[test, expected_failure(abort_code = EMaxTracksExceeded, location = musicos::release)]
-fun new_exceeds_max_tracks_aborts() {
-    let ctx = &mut tx_context::dummy();
-    let mut registry = release::new_registry_for_testing(ctx);
-
-    // MAX_TRACKS + 1 = 256 tracks in one flat tracklist.
-    // Splits: 256 x 39 BPS = 9984; the first 16 get 40 BPS (16 extra = 10000).
-    let tracks = vector::tabulate!(MAX_TRACKS + 1, |index| track::new_for_testing(
-        test_helpers::fake_id(ctx),
-        test_helpers::fake_id(ctx),
-        test_helpers::fake_id(ctx),
-        if (index < 16) 40 else 39,
-    ));
-
-    let (rel, cap) = registry.new(tracks, 0u256);
-    destroy(rel);
-    destroy(cap);
-    destroy(registry);
-}
 
 /// Helper to create a minimal release.
 fun test_release(ctx: &mut TxContext): (release::Release, release::ReleaseAdminCap) {
@@ -127,14 +100,13 @@ fun duplicate_digest_aborts() {
     let rec_id = test_helpers::fake_id(ctx);
     let rel_id = test_helpers::fake_id(ctx);
 
-    let comp_id = test_helpers::fake_id(ctx);
     let (rel1, cap1) = registry.new(
-        vector[track::new_for_testing(comp_id, rec_id, rel_id, 10000)],
+        vector[track::new_for_testing(rec_id, rel_id, 10000)],
         7u256,
     );
     // Identical recording ids, splits, and nonce: identical digest.
     let (rel2, cap2) = registry.new(
-        vector[track::new_for_testing(comp_id, rec_id, rel_id, 10000)],
+        vector[track::new_for_testing(rec_id, rel_id, 10000)],
         7u256,
     );
     destroy(rel1);
@@ -182,7 +154,6 @@ fun track_new_creates_unassigned_track() {
     let t = track::new(&rec_cap, &rec, target_release_id, 10000);
 
     assert_eq!(t.recording_id(), object::id(&rec));
-    assert_eq!(t.composition_id(), object::id(&comp));
     assert_eq!(t.split_bps().value(), 10000);
     assert_eq!(t.target_release_id(), target_release_id);
     assert!(t.is_unassigned_state());

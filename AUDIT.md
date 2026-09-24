@@ -119,6 +119,51 @@
 > event assertions converted to the slimmed payloads, with the e2e flow now
 > re-deriving `release_id` from the event's allocation and nonce alone).
 
+> **Design change (2026-09-24, unreleased): no track limit.** `release::new`
+> no longer caps the tracklist at 255 tracks; `MAX_TRACKS` and
+> `EMaxTracksExceeded` (31) are gone. The limit was arbitrary: no index or
+> count in core or its extensions is narrower than `u64`. The effective
+> ceiling is now Sui's own object-size, event-size and gas limits. Because an
+> `Initialized` release cannot outlive its creating transaction, an oversized
+> release aborts that transaction as a whole; no track is consumed and no
+> consent is stranded beyond the existing "release that never publishes"
+> class. The "1–255 tracks" and "≤ 255 tracks" statements below describe the
+> audited revision; the split-arithmetic finding still holds, since splits
+> must sum to exactly 10,000 bps regardless of track count. Test count at
+> this change: 47 (`new_exceeds_max_tracks_aborts` removed; the 255-track
+> stress tests remain as large-tracklist coverage).
+
+> **Design change (2026-09-24, unreleased, continued): per-track events and
+> non-copyable states.** (1) `TrackAllocation` and
+> `ReleasePublishedEvent.track_allocations` are gone. `publish` now emits one
+> `ReleaseTrackAssignedEvent { release_id, position, recording_id, split_bps }`
+> per track, in tracklist order, as `track::assign` verifies it, then
+> `ReleasePublishedEvent { release_id, published_at_ms, nonce }`. The track's
+> `composition_id` is no longer emitted: it is the `composition_id` of the
+> recording's own `RecordingPublishedEvent`, reachable by joining on
+> `recording_id` (the e2e test performs that join). The digest remains
+> reconstructible from the track events in position order and the nonce.
+> Sui's per-transaction event-count limit now bounds tracks per release,
+> alongside the object-size and gas limits noted above. This supersedes the
+> "rich per-track allocation stays" wording in the release-events note above.
+> (2) `CompositionState`, `RecordingState`, `ReleaseState` and `TrackState`
+> no longer have `copy`; state is matched by reference and the few scalar
+> payloads read from it (royalty rate, nonce, target release id) are copied
+> explicitly. No behavior changes; `drop` and `store` remain, since the state
+> is an object field that is overwritten on transition. Test count unchanged
+> at 47.
+
+> **Design change (2026-09-24, unreleased, continued): `Track` drops
+> `composition_id`.** `Track` is now `{ state, recording_id, split_bps }`;
+> `track::composition_id()` is gone and `track::new` reads only the
+> recording's id. Revenue already routed to `recording_id` alone, and every
+> known consumer of the field (the release revenue distributor and
+> `release_cover_art`) only echoed it into events. The recording's immutable
+> `composition_id`, set from a real `&Composition` in `recording::new`, is now
+> the single source of truth for a track's composition. Lost: answering "is
+> composition X on this release?" on-chain from a `&Release` alone, without
+> the recordings; no consumer does this. Test count unchanged at 47.
+
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
 their admin capabilities, and the extension authorization contract that all
 `musicos-extensions/*` packages build on. Verdict: **safe to publish — no

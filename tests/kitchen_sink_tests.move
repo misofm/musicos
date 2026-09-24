@@ -1,7 +1,8 @@
-/// Structural stress test: proves every bound (255 tracks, exact-100%
-/// splits) is achievable simultaneously and that the resulting
-/// release still publishes. The only thing under test is whether construction
-/// and `publish` abort at these bounds — there is no cross-transaction
+/// Structural stress test: proves a large tracklist (255 tracks) with
+/// exact-100% splits is achievable and that the resulting release still
+/// publishes. Core imposes no track limit of its own — the ceiling is Sui's
+/// object, event and gas limits. The only thing under test is whether
+/// construction and `publish` abort at this size — there is no cross-transaction
 /// re-fetch or sender-dependent behavior to assert on the shared object
 /// afterward, so this stays a single `tx_context::dummy()` transaction rather
 /// than a `test_scenario`.
@@ -21,9 +22,8 @@ use sui::event;
 // in the metadata extensions), so only the release's tracklist retains
 // structural bounds.
 
-/// Kitchen sink test: creates a release with the structural fields at maximum
-/// bounds.
-/// - 255 tracks (MAX_TRACKS) in one flat tracklist
+/// Kitchen sink test: creates a release with a large tracklist.
+/// - 255 tracks in one flat tracklist
 /// - Track splits sum to exactly 10000 BPS (55 x 40 + 200 x 39 = 10000)
 /// - Successfully publishes
 #[test]
@@ -35,7 +35,6 @@ fun test_release_kitchen_sink() {
     let dummy_release_id = test_helpers::fake_id(ctx);
     let tracks = vector::tabulate!(255, |index| track::new_for_testing(
         test_helpers::fake_id(ctx),
-        test_helpers::fake_id(ctx),
         dummy_release_id,
         if (index < 55) 40 else 39,
     ));
@@ -43,7 +42,7 @@ fun test_release_kitchen_sink() {
     // new_for_testing patches all tracks to point to the real release ID.
     let (rel, rel_cap) = release::new_for_testing(tracks, ctx);
 
-    // Publish - proves all max bounds are achievable together
+    // Publish - proves a large tracklist with exact splits publishes
     let clock = sui::clock::create_for_testing(ctx);
     rel.publish(&rel_cap, &clock);
 
@@ -52,19 +51,16 @@ fun test_release_kitchen_sink() {
     destroy(rel_cap);
 }
 
-/// The production constructor preserves all 255 track positions in the rich
-/// Published event, including duplicate recording IDs and zero-valued splits.
+/// Publishing a 255-track release emits one `ReleaseTrackAssignedEvent` per
+/// position, in order, including duplicate recording IDs and zero-valued
+/// splits, followed by a single `ReleasePublishedEvent`.
 #[test]
-fun test_release_rich_event_arrays_at_max_tracks() {
+fun test_release_track_events_at_255_tracks() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
     let base_recording_ids = vector::tabulate!(255, |_| test_helpers::fake_id(ctx));
-    let base_composition_ids = vector::tabulate!(255, |_| test_helpers::fake_id(ctx));
     let recording_ids = vector::tabulate!(255, |index| {
         if (index == 254) base_recording_ids[0] else base_recording_ids[index]
-    });
-    let composition_ids = vector::tabulate!(255, |index| {
-        if (index == 254) base_composition_ids[0] else base_composition_ids[index]
     });
     let track_split_bps = vector::tabulate!(255, |index| {
         if (index == 0) 0 else if (index == 254) 79 else if (index < 55) 40 else 39
@@ -77,7 +73,6 @@ fun test_release_rich_event_arrays_at_max_tracks() {
         nonce,
     );
     let tracks = vector::tabulate!(255, |index| track::new_for_testing(
-        composition_ids[index],
         recording_ids[index],
         predicted_release_id,
         track_split_bps[index] as u16,
@@ -92,17 +87,18 @@ fun test_release_rich_event_arrays_at_max_tracks() {
     destroy(rel_cap);
     let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
     assert_eq!(published_events.length(), 1);
-    assert!(sui::bcs::to_bytes(&published_events[0]).length() < 18000);
-    let (event_release_id, _published_at, event_nonce, track_allocations) =
+    let (event_release_id, _published_at, event_nonce) =
         release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
     assert_eq!(event_nonce, nonce);
-    assert_eq!(track_allocations.length(), 255);
-    assert_eq!(sui::bcs::to_bytes(&track_allocations).length(), 2 + 255 * 66);
+
+    let track_events = event::events_by_type<release::ReleaseTrackAssignedEvent>();
+    assert_eq!(track_events.length(), 255);
     255u64.do!(|index| {
-        let (composition_id, recording_id, split_bps) =
-            release::track_allocation_fields(track_allocations[index]);
-        assert_eq!(composition_id, composition_ids[index].to_address());
+        let (release_id, position, recording_id, split_bps) =
+            release::release_track_assigned_event_fields(track_events[index]);
+        assert_eq!(release_id, predicted_release_id.to_address());
+        assert_eq!(position, index);
         assert_eq!(recording_id, recording_ids[index].to_address());
         assert_eq!(split_bps as u64, track_split_bps[index]);
     });

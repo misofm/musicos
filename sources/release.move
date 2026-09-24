@@ -99,18 +99,9 @@ const ENotInitializedState: u64 = 10;
 /// Track splits don't sum to 100% (10,000 BPS).
 const EInvalidTrackSplitsSum: u64 = 20;
 
-// Constraint errors (30-39)
-/// Too many tracks in release.
-const EMaxTracksExceeded: u64 = 31;
-
 // Reference errors (50-59)
 /// Release must contain at least one track.
 const ENoTracks: u64 = 51;
-
-// === Constants ===
-
-/// Maximum number of tracks allowed in a release.
-const MAX_TRACKS: u64 = 255;
 
 // === Structs ===
 
@@ -150,7 +141,7 @@ public struct ReleaseAdminCapKey() has copy, drop, store;
 // === Enums ===
 
 /// Lifecycle state of a release.
-public enum ReleaseState has copy, drop, store {
+public enum ReleaseState has drop, store {
     /// Release is initialized but not yet published. Carries only what
     /// `publish` needs and cannot otherwise reach: the creator's nonce, which
     /// is a digest input and not an embedded field.
@@ -166,37 +157,43 @@ public enum ReleaseState has copy, drop, store {
 
 // === Events ===
 
-/// One ordered allocation entry; vector position is the track position.
-/// Fixed-width fields keep the complete financial receipt bounded to 66 bytes per track.
-public struct TrackAllocation has copy, drop {
-    composition_id: address,
+/// Emitted once per track when a release is published, in tracklist order,
+/// before that release's `ReleasePublishedEvent`. Together, a publish
+/// transaction's track events are the release's economics and membership:
+/// every `(recording, split)` pair, duplicates and zero splits included.
+///
+/// Carries only what an event-only indexer could not otherwise obtain. The
+/// track's composition is deliberately absent: it is the `composition_id` of
+/// the recording's own `RecordingPublishedEvent`, reachable by joining on
+/// `recording_id`.
+public struct ReleaseTrackAssignedEvent has copy, drop {
+    release_id: address,
+    /// Zero-based position of the track in the tracklist.
+    position: u64,
     recording_id: address,
     split_bps: u16,
 }
 
-/// Emitted once when a release is published.
+/// Emitted once when a release is published, after its
+/// `ReleaseTrackAssignedEvent`s.
 ///
 /// The payload is deliberately minimal. A field is carried only if an indexer
 /// reading musicos events alone would otherwise need an object lookup to
 /// obtain it and it matters to the business: the release's identity, when it
-/// was published, the creator's nonce, and the complete ordered allocation —
-/// every `(composition, recording, split)` triple in tracklist order,
-/// duplicates and zero splits included, which is the release's economics and
-/// membership and is otherwise reachable only by reading the object.
-/// Everything else about the publication is derivable without a lookup — the
-/// sender from the transaction envelope; the admin cap id as the derived
-/// address of `release_id` under `ReleaseAdminCapKey`; the track count as
-/// `track_allocations.length()`; the registry id from the package's
-/// `ReleaseRegistryCreatedEvent` (one canonical registry per deployment); and
-/// the release digest as `blake2b256(bcs(recording_ids) || bcs(split_bps as
-/// u64) || bcs(nonce))` over the allocation and nonce carried here — of which
-/// `release_id` is itself the derived address under `ReleaseKey`.
+/// was published, and the creator's nonce. The tracklist is carried by the
+/// same transaction's track events. Everything else about the publication is
+/// derivable without a lookup — the sender from the transaction envelope; the
+/// admin cap id as the derived address of `release_id` under
+/// `ReleaseAdminCapKey`; the track count as the number of track events; the
+/// registry id from the package's `ReleaseRegistryCreatedEvent` (one
+/// canonical registry per deployment); and the release digest as
+/// `blake2b256(bcs(recording_ids) || bcs(split_bps as u64) || bcs(nonce))`
+/// over the track events in position order and the nonce carried here — of
+/// which `release_id` is itself the derived address under `ReleaseKey`.
 public struct ReleasePublishedEvent has copy, drop {
     release_id: address,
     published_at_ms: u64,
     nonce: u256,
-    /// Complete ordered allocation, including duplicates and zero splits.
-    track_allocations: vector<TrackAllocation>,
 }
 
 /// Emitted once when package initialization creates the canonical shared
@@ -237,7 +234,6 @@ public fun new(
     nonce: u256,
 ): (Release, ReleaseAdminCap) {
     assert!(!tracks.is_empty(), ENoTracks);
-    assert!(tracks.length() <= MAX_TRACKS, EMaxTracksExceeded);
 
     let (recording_ids, track_split_values, split_sum) = extract_digest_inputs(&tracks);
     assert!(split_sum == (bps::denominator!() as u64), EInvalidTrackSplitsSum);
@@ -288,10 +284,12 @@ public fun release_registry_id(self: &ReleaseRegistry): ID {
 public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
     self.authorize(cap);
 
-    match (self.state) {
+    match (&self.state) {
         ReleaseState::Initialized { nonce } => {
-            // Assert that the tracks are assigned to the release.
-            let track_allocations = self.assign_tracks();
+            let nonce = *nonce;
+            // Assert that the tracks are assigned to the release, emitting
+            // one `ReleaseTrackAssignedEvent` per track.
+            self.assign_tracks();
 
             let published_at_ms = clock.timestamp_ms();
 
@@ -306,7 +304,6 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
                 release_id,
                 published_at_ms,
                 nonce,
-                track_allocations,
             });
         },
         _ => abort ENotInitializedState,
@@ -374,18 +371,21 @@ fun calculate_release_digest(
     blake2b256(&hash_input)
 }
 
-/// Assigns all tracks to this release, verifying each track's target release ID matches.
-fun assign_tracks(self: &mut Release): vector<TrackAllocation> {
-    let mut allocations = vector[];
+/// Assigns all tracks to this release, verifying each track's target release ID
+/// matches, and emits one `ReleaseTrackAssignedEvent` per track in tracklist order.
+fun assign_tracks(self: &mut Release) {
+    let release_id = self.id.to_address();
+    let mut position = 0;
     self.tracks.do_mut!(|track| {
         track.assign(&self.id);
-        allocations.push_back(TrackAllocation {
-            composition_id: track.composition_id().to_address(),
+        emit(ReleaseTrackAssignedEvent {
+            release_id,
+            position,
             recording_id: track.recording_id().to_address(),
             split_bps: track.split_bps().value(),
         });
+        position = position + 1;
     });
-    allocations
 }
 
 // === Test Functions ===
@@ -422,19 +422,14 @@ public fun release_registry_created_event_fields(event: ReleaseRegistryCreatedEv
 #[test_only]
 public fun release_published_event_fields(
     event: ReleasePublishedEvent,
-): (address, u64, u256, vector<TrackAllocation>) {
-    let ReleasePublishedEvent {
-        release_id,
-        published_at_ms,
-        nonce,
-        track_allocations,
-    } = event;
-    (release_id, published_at_ms, nonce, track_allocations)
+): (address, u64, u256) {
+    let ReleasePublishedEvent { release_id, published_at_ms, nonce } = event;
+    (release_id, published_at_ms, nonce)
 }
 
 #[test_only]
 public fun is_initialized_state(self: &Release): bool {
-    match (self.state) {
+    match (&self.state) {
         ReleaseState::Initialized { .. } => true,
         _ => false,
     }
@@ -442,7 +437,7 @@ public fun is_initialized_state(self: &Release): bool {
 
 #[test_only]
 public fun is_published_state(self: &Release): bool {
-    match (self.state) {
+    match (&self.state) {
         ReleaseState::Published(_) => true,
         _ => false,
     }
@@ -479,7 +474,9 @@ public fun new_for_testing(
 }
 
 #[test_only]
-public fun track_allocation_fields(allocation: TrackAllocation): (address, address, u16) {
-    let TrackAllocation { composition_id, recording_id, split_bps } = allocation;
-    (composition_id, recording_id, split_bps)
+public fun release_track_assigned_event_fields(
+    event: ReleaseTrackAssignedEvent,
+): (address, u64, address, u16) {
+    let ReleaseTrackAssignedEvent { release_id, position, recording_id, split_bps } = event;
+    (release_id, position, recording_id, split_bps)
 }
