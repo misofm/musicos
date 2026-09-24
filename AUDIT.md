@@ -30,6 +30,95 @@
 > in the payload as the replacement. Otherwise this document still records
 > the 2026-08-23 audit, and its line references are to that revision.
 
+> **Design change (2026-09-23, unreleased, continued):** three further
+> changes in the same unreleased source.
+> (1) *Event slimming.* `CompositionPublishedEvent<CS>` now carries exactly
+> `composition_id`, `royalty_rate_bps`, `published_at_ms`;
+> `RecordingPublishedEvent<RS>` exactly `recording_id`, `composition_id`,
+> `composition_royalty_rate_bps`, `published_at_ms`. The rule: a field stays
+> only if an indexer reading musicos events alone would otherwise need an
+> object lookup for it and it matters to the business. Dropped as derivable
+> or constant: `clock_id` (always `0x6`), `shared_after` (always true),
+> `created_by` (the envelope sender), `*_admin_cap_id`/`created_admin_cap_id`
+> (derived addresses of the object id under `*AdminCapKey`),
+> `share_currency_id`/`consumed_treasury_cap_id` (duplicated by
+> `share::ShareInitializedEvent<S>` in the same transaction),
+> `share_supply_before/after`, `shares_before_grant`,
+> `composition_shares_granted`, `shares_returned`, `share_decimals`,
+> `share_supply_fixed_after`, `composition_funds_sent` (all fixed by
+> `share::initialize` — zero before, 100M·10⁶ after, 6 decimals, supply fixed —
+> or arithmetic on the rate and that supply), and `title_bytes` (see 3).
+> `ReleasePublishedEvent` is unchanged.
+> (2) *`Initialized` slimming.* The `Initialized` variants existed only to
+> carry creation facts to `publish` for those fields. `CompositionState::
+> Initialized` is now fieldless (`publish` reads the embedded
+> `royalty_rate`); `RecordingState::Initialized { composition_royalty_rate_bps
+> }` carries only the rate `new` applied, since `publish` does not receive the
+> composition. The economics of `recording::new` are unchanged
+> (`share::initialize`, `rate.apply(supply)` split, `send_funds` to the
+> composition address only when non-zero, remainder returned); `publish`
+> still takes the cap (authorization by type) and the clock.
+> (3) *Title removal.* `Composition` no longer has a `title` field;
+> `composition::new` takes `(royalty_rate_bps, share_currency,
+> share_treasury_cap, ctx)`; `title()`, `EEmptyString`,
+> `EMaxTitleLengthExceeded` and `MAX_TITLE_LENGTH` are gone from
+> `composition`. Titles have more than one correct rendering and are never
+> read by the economics, so by the package's own rule they are presentation
+> and belong in a metadata extension (none existed at this date; see
+> Verification's cross-read). `release::title` is unchanged.
+> This supersedes the prior rich-event dispositions recorded in the broader
+> workspace (`audits/v1-event-final-20260916/REPORT.md` and
+> `audits/engineering-skills-20260916/REVIEW.md`), and the "immutable title"
+> wording under "What it does" below, which describes the audited revision.
+> Finding I4's "title" refers to the release title and still holds. Test
+> count at this change: 50 (title-validation tests removed; the composition
+> cut remains asserted through the creator's returned balance for 0%, 15% and
+> 100% rates).
+
+> **Design change (2026-09-23, unreleased, continued): release title and
+> release events.** The same three rules now reach `release`.
+> (1) *Title removal.* `Release` no longer has a `title` field;
+> `release::new` takes `(&mut ReleaseRegistry, tracks, nonce)`; `title()`,
+> `EEmptyString`, `EMaxTitleLengthExceeded` and `MAX_TITLE_LENGTH` are gone
+> from `release`. Beyond the presentation argument in (3) above, the release
+> title was the one embedded field outside the release digest: no track
+> signer ever consented to it, it was chosen unilaterally by the release
+> creator, and what buyers rely on is the fixed tracklist, splits and id.
+> Core now embeds nothing outside the digest; release titles belong in the
+> `release_metadata` extension, as composition titles belong in
+> `composition_metadata`. This supersedes "`release::title` is unchanged"
+> in the note above, the "one embedded name" wording it left in
+> `release.move`, and the reading of Finding I4 — whose "title" is now
+> extension metadata like the artwork, credits and grouping it lists; I4
+> itself (consent excludes presentation) still holds and is now enforced by
+> the type, since core has no presentation field left to choose after consent.
+> (2) *Event slimming.* `ReleasePublishedEvent` now carries exactly
+> `release_id`, `published_at_ms`, `nonce`, `track_allocations` (unchanged
+> 66-byte `TrackAllocation` entries in tracklist order, duplicates and zero
+> splits retained). Dropped as derivable or constant under the same rule:
+> `clock_id` (always `0x6`), `shared_after` (always true),
+> `release_admin_cap_id` (derived address of `release_id` under
+> `ReleaseAdminCapKey`), `title_bytes` (see 1), `assigned_track_count`
+> (`track_allocations.length()`), `registry_id` (one canonical registry per
+> deployment, announced by `ReleaseRegistryCreatedEvent` in the publish
+> transaction), and `release_digest` (`blake2b256(bcs(recording_ids) ||
+> bcs(splits as u64) || bcs(nonce))` over the allocation and nonce carried in
+> the same event, of which `release_id` is the derived address under
+> `ReleaseKey`). `ReleaseRegistryCreatedEvent` now carries exactly
+> `registry_id`; `created_by` (envelope sender) and `shared_after` (always
+> true) are dropped. The rich per-track allocation stays: the tracklist's
+> recording ids, composition ids and splits are the release's economics and
+> membership and are reachable from no other event.
+> (3) *`Initialized` slimming.* `ReleaseState::Initialized { nonce }` carries
+> only the creator's nonce, which `publish` emits and cannot otherwise reach
+> (it is a digest input, not an embedded field); `registry_id` and
+> `release_digest` existed there only to feed the dropped event fields. The
+> digest, id derivation, split validation, track bounds and `track::assign`
+> verification in `new`/`publish` are unchanged. Test count at this change:
+> 48 (`new_title_too_long_aborts` and `new_empty_title_aborts` removed;
+> event assertions converted to the slimmed payloads, with the e2e flow now
+> re-deriving `release_id` from the event's allocation and nonce alone).
+
 Audit of the root package: `Composition`, `Recording`, `Release`, `Track`,
 their admin capabilities, and the extension authorization contract that all
 `musicos-extensions/*` packages build on. Verdict: **safe to publish — no

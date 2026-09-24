@@ -39,8 +39,8 @@ fun test_publish_recording() {
     scenario.end();
 }
 
-// A recording carries no naming fields: its display title is its composition's
-// title, read by reference, and richer naming lives in the metadata extension.
+// A recording carries no naming fields: display titles (the recording's and
+// its composition's) and richer naming live in the metadata extension.
 // Naming behavior is therefore untestable here by design.
 
 // Recordings are independent objects (fresh `object::new`), not derived children

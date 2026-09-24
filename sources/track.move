@@ -100,10 +100,11 @@ public enum TrackState has copy, drop, store {
 /// `target_release_id` is derived from the release digest, so targeting it
 /// consents to that release's exact economics and membership: the ordered
 /// list of `(recording, split)` pairs and the creator's nonce, nothing more.
-/// The release's title, artwork, credits, and display grouping are chosen by
-/// the release creator — before or after this track is created — and are not
-/// bound by the digest. Presentation is trusted and publicly attributable,
-/// not cryptographically committed.
+/// Everything else about the release — title, artwork, credits, display
+/// grouping — lives in the extension layer, not in core: it is chosen by the
+/// release creator, before or after this track is created, and is not bound
+/// by the digest. Presentation is trusted and publicly attributable, not
+/// cryptographically committed.
 ///
 /// The recording need not be `Published`: its admin can create tracks inside
 /// the recording's own creating transaction (an `Initialized` recording

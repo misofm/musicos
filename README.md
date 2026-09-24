@@ -15,9 +15,9 @@ The protocol separates the *work* layer from the *distribution* layer:
 
 | Object | Layer | What it is |
 |--------|-------|------------|
-| **`Composition`** | work | The underlying written work. Core carries its title and the royalty rate it earns from recordings. |
-| **`Recording`** | work | A master recording of a composition. It carries no name of its own — its display title is its composition's title, and version naming ("Radio Edit", "(Live)") is extension metadata. |
-| **`Release`** | distribution | A distributable package (Album / EP / Single) assembled from recordings — a flat, ordered tracklist with per-track revenue splits. |
+| **`Composition`** | work | The underlying written work. Core carries only the royalty rate it earns from recordings; its title is extension metadata. |
+| **`Recording`** | work | A master recording of a composition. It carries no name of its own — display titles (its own and its composition's) and version naming ("Radio Edit", "(Live)") are extension metadata. |
+| **`Release`** | distribution | A distributable package (Album / EP / Single) assembled from recordings — a flat, ordered tracklist with per-track revenue splits. It carries no title: release titles are extension metadata (`release_metadata`). |
 | **`Track`** | distribution | A recording placed on a release, created from the recording admin capability — its creation *is* the consent to a specific future release. |
 
 Credits, artwork, language, advisory flags, master audio, and display grouping attach as extensions or dynamic fields rather than living in the core.
@@ -29,9 +29,10 @@ list of `(recording, split)` pairs plus a creator nonce, claimed as a derived
 child of the canonical `ReleaseRegistry` shared by `musicos::release` package
 initialization. A `Track` targets that derived id at creation, so creating one
 consents to the release's precise membership, splits, and running order — and
-nothing else. Nothing structural is chosen after consent except the release's
-title; presentation is chosen by the release creator and is publicly
-attributable rather than cryptographically committed.
+nothing else. Core embeds nothing outside the digest, so nothing is chosen
+after consent; everything else about a release (title, artwork, credits,
+grouping) is presentation in the extension layer, chosen by the release
+creator and publicly attributable rather than cryptographically committed.
 
 `ReleaseRegistry` has one production instance per package publication. It is
 shared, has no constructor, delete path, or mutable-UID accessor, and its
@@ -41,10 +42,12 @@ rightsholders' consent.
 
 ### Lifecycle
 
-Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. `Initialized` carries the temporary creation metadata needed by `publish`; because the objects are key-only and cannot escape the creating transaction, only the final `Published` transition emits a lifecycle event. Each Published event is self-contained with object/capability linkage, creation provenance and economics, bounded immutable fields and timestamps. Release publication carries its digest and one ordered `track_allocations` vector of
+Core objects are **build-then-freeze**: created in an `Initialized` state, configured via their admin capability, then `publish()`ed — after which they are immutable. Because the objects are key-only and cannot escape the creating transaction, only the final `Published` transition emits a lifecycle event.
+
+Published events are deliberately minimal: a field is carried only if an indexer reading musicos events alone would otherwise need an object lookup to obtain it and it matters to the business. `CompositionPublishedEvent` carries the composition id, its royalty rate and the publish timestamp; `RecordingPublishedEvent` carries the recording id, its composition id, the composition royalty rate applied at creation and the timestamp. `ReleasePublishedEvent` carries the release id, the timestamp, the creator's nonce and one ordered `track_allocations` vector of
 composition IDs, recording IDs, and `u16` split BPS. Duplicate recordings and zero
 splits retain their positions; indexers need no object reads to reconstruct the
-allocation. Each entry is 66 BCS bytes (at most 16,832 bytes for the vector).
+allocation. Each entry is 66 BCS bytes (at most 16,832 bytes for the vector). `ReleaseRegistryCreatedEvent`, emitted once at package publication, carries only the registry id. Everything else is derivable — the share type from the event's type argument, the sender from the transaction envelope, the share currency and treasury cap ids from `share::ShareInitializedEvent` in the same transaction, admin cap ids as derived addresses of the object id, share amounts from the fixed supply and the rate, the track count from the allocation's length, the registry id from the package's `ReleaseRegistryCreatedEvent`, and the release digest (and from it the release id, as a derived address) by hashing the allocation and nonce.
 
 ### Ownership
 
@@ -52,7 +55,7 @@ Ownership is expressed through **share tokens** (via the [`share`](https://githu
 
 ## Design principles
 
-- **Core stores what a thing *is*; extensions describe it.** Constitutive state — identity declarations and everything the economics read — lives in the frozen core. Anything with more than one correct rendering is presentation and lives in the mutable extension layer. Core names exactly two things: the work (`Composition.title`) and the package (`Release.title`).
+- **Core stores what a thing *is*; extensions describe it.** Constitutive state — identity declarations and everything the economics read — lives in the frozen core. Anything with more than one correct rendering is presentation and lives in the mutable extension layer. Core names nothing: compositions, recordings and releases all carry no title — a title has translations, alternate titles and corrections, so it is presentation, and the economics never read one. A release title is additionally outside the release digest, so no track signer consents to it; what buyers rely on is the fixed tracklist, splits and id.
 - **The digest binds what signers agree to; publish freezes what the creator declared; extensions carry what anyone might rephrase.**
 - **Create-and-publish is atomic by construction.** Core objects are `key`-only with no `drop`: an `Initialized` object cannot outlive its creating transaction.
 - **Classifications are attestations, not core fields.** Subjective labels (e.g. genre) live in an attestation layer.
@@ -84,8 +87,14 @@ sui move test
 > **Unreleased changes:** this source drops the `CompositionShare` type
 > parameter from `Recording` (now `Recording<RecordingShare>`) and from
 > `RecordingPublishedEvent`; the composition link is carried by the
-> `composition_id` field alone. This is an upgrade-incompatible change that will
-> require a fresh publication, superseding the Mainnet and Testnet packages
+> `composition_id` field alone. It also slims `CompositionPublishedEvent` and
+> `RecordingPublishedEvent` to identity, rate and timestamp, and
+> `ReleasePublishedEvent` to identity, timestamp, nonce and allocation (see
+> Lifecycle), reduces the `Initialized` state variants to what `publish` needs,
+> and removes the composition and release `title` fields (`composition::new`
+> and `release::new` no longer take a title; `composition::title()` and
+> `release::title()` are gone). These are upgrade-incompatible changes that
+> will require a fresh publication, superseding the Mainnet and Testnet packages
 > currently recorded in `Published.toml`.
 
 The current Mainnet and Testnet deployments are immutable: each was published

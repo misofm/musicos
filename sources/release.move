@@ -11,8 +11,7 @@
 /// than one correct rendering, which makes it presentation, and presentation
 /// lives in the metadata extension. A consequence worth stating: the stored
 /// tracklist and the digest pre-image have the same shape, so what signers
-/// consented to is exactly what is stored — nothing structural is chosen
-/// after consent except the title.
+/// consented to is exactly what is stored — nothing is chosen after consent.
 ///
 /// ### Key Features:
 ///
@@ -26,25 +25,29 @@
 /// `uid_mut`, so core takes no dependency on an identity package and core
 /// publish enforces no attribution.
 ///
-/// The same rule governs naming. Core stores what a thing *is* — identity and
-/// everything the economics read; extensions describe it. The release's `title`
-/// is the one embedded name: it is constitutive (naming the package is part of
-/// creating it) and freezing it at publish is a buyer-facing guarantee. Edition
-/// naming ("Deluxe Edition"), disc titles, localized titles, and DSP-shaped
-/// slots all have more than one correct rendering — presentation — and live in
-/// the metadata extension.
+/// The same rule governs naming: a release carries no title. Core stores what
+/// a thing *is* — identity and everything the economics read; extensions
+/// describe it. A title has more than one correct rendering — localized
+/// titles, alternate titles, corrections, edition naming ("Deluxe Edition"),
+/// DSP-shaped slots — which makes it presentation, and the economics never
+/// read a name. Nor does a title carry consent: it sits outside the release
+/// digest, so no track signer ever agreed to it — it would be chosen
+/// unilaterally by the release creator, and what buyers rely on is the fixed
+/// tracklist, splits and id, not a string. Release titles live in the
+/// `release_metadata` extension, exactly as composition titles live in
+/// `composition_metadata`.
 ///
 /// ### Consent scope
 ///
 /// The release digest — and therefore the derived release id every `Track`
 /// commits to at creation — binds the economics and membership of the
 /// release: the ordered list of `(recording, split)` pairs and the creator's
-/// nonce. It deliberately binds nothing else. The title — the one embedded
-/// field outside the digest — and everything in the extension layer (artwork,
-/// credits, display grouping) are chosen by the release creator, before or
-/// after tracks are created, and are trusted and publicly attributable rather
-/// than cryptographically committed. See `track::new` for the signer-side
-/// statement of this boundary.
+/// nonce. It deliberately binds nothing else, and core embeds nothing else:
+/// everything outside the digest — title, artwork, credits, display
+/// grouping — lives in the extension layer, is chosen by the release creator
+/// before or after tracks are created, and is trusted and publicly
+/// attributable rather than cryptographically committed. See `track::new`
+/// for the signer-side statement of this boundary.
 ///
 /// The derived id commits to the canonical registry's UID and the digest, not
 /// the digest alone — so targeting an id also consents to that namespace's
@@ -62,8 +65,8 @@
 /// by-value consumer is `publish`. Create-and-publish is therefore atomic by
 /// construction — an `Initialized` release cannot outlive its creating
 /// transaction, and every release that exists on-chain is `Published` and
-/// shared. There is deliberately no keep function; assembling tracks, discs,
-/// and the release must fit one transaction.
+/// shared. There is deliberately no keep function; assembling tracks and the
+/// release must fit one transaction.
 ///
 /// `uid_mut` works in any lifecycle state and is permanent root over ALL
 /// dynamic fields on the object — including fields attached by other
@@ -76,7 +79,6 @@ module musicos::release;
 
 use bps::bps;
 use musicos::track::Track;
-use std::string::String;
 use sui::bcs::to_bytes;
 use sui::clock::Clock;
 use sui::derived_object::{Self, claim};
@@ -100,10 +102,6 @@ const EInvalidTrackSplitsSum: u64 = 20;
 // Constraint errors (30-39)
 /// Too many tracks in release.
 const EMaxTracksExceeded: u64 = 31;
-/// Title exceeds maximum length.
-const EMaxTitleLengthExceeded: u64 = 34;
-/// String must not be empty.
-const EEmptyString: u64 = 35;
 
 // Reference errors (50-59)
 /// Release must contain at least one track.
@@ -113,19 +111,15 @@ const ENoTracks: u64 = 51;
 
 /// Maximum number of tracks allowed in a release.
 const MAX_TRACKS: u64 = 255;
-/// Maximum length of a release title in bytes.
-const MAX_TITLE_LENGTH: u64 = 300;
 
 // === Structs ===
 
-/// A music release containing one or more discs of tracks.
+/// A music release: an ordered flat tracklist with per-track revenue splits.
 public struct Release has key {
     /// Unique identifier for this release.
     id: UID,
     /// Current lifecycle state.
     state: ReleaseState,
-    /// Title of the release.
-    title: String,
     /// The ordered tracklist. Same shape as the digest pre-image every track's
     /// creator consented to; display grouping lives in the metadata extension.
     tracks: vector<Track>,
@@ -157,10 +151,10 @@ public struct ReleaseAdminCapKey() has copy, drop, store;
 
 /// Lifecycle state of a release.
 public enum ReleaseState has copy, drop, store {
-    /// Release is initialized but not yet published.
+    /// Release is initialized but not yet published. Carries only what
+    /// `publish` needs and cannot otherwise reach: the creator's nonce, which
+    /// is a digest input and not an embedded field.
     Initialized {
-        registry_id: address,
-        release_digest: vector<u8>,
         nonce: u256,
     },
     /// Release is published and immutable. Includes publication timestamp.
@@ -181,16 +175,25 @@ public struct TrackAllocation has copy, drop {
 }
 
 /// Emitted once when a release is published.
+///
+/// The payload is deliberately minimal. A field is carried only if an indexer
+/// reading musicos events alone would otherwise need an object lookup to
+/// obtain it and it matters to the business: the release's identity, when it
+/// was published, the creator's nonce, and the complete ordered allocation —
+/// every `(composition, recording, split)` triple in tracklist order,
+/// duplicates and zero splits included, which is the release's economics and
+/// membership and is otherwise reachable only by reading the object.
+/// Everything else about the publication is derivable without a lookup — the
+/// sender from the transaction envelope; the admin cap id as the derived
+/// address of `release_id` under `ReleaseAdminCapKey`; the track count as
+/// `track_allocations.length()`; the registry id from the package's
+/// `ReleaseRegistryCreatedEvent` (one canonical registry per deployment); and
+/// the release digest as `blake2b256(bcs(recording_ids) || bcs(split_bps as
+/// u64) || bcs(nonce))` over the allocation and nonce carried here — of which
+/// `release_id` is itself the derived address under `ReleaseKey`.
 public struct ReleasePublishedEvent has copy, drop {
     release_id: address,
-    release_admin_cap_id: address,
-    clock_id: address,
-    title_bytes: vector<u8>,
     published_at_ms: u64,
-    assigned_track_count: u64,
-    shared_after: bool,
-    registry_id: address,
-    release_digest: vector<u8>,
     nonce: u256,
     /// Complete ordered allocation, including duplicates and zero splits.
     track_allocations: vector<TrackAllocation>,
@@ -198,11 +201,10 @@ public struct ReleasePublishedEvent has copy, drop {
 
 /// Emitted once when package initialization creates the canonical shared
 /// `ReleaseRegistry`, allowing clients and indexers to discover its id from
-/// the publish transaction effects.
+/// the publish transaction effects. Carries only the id: the creator is the
+/// transaction sender, and the registry is always shared.
 public struct ReleaseRegistryCreatedEvent has copy, drop {
     registry_id: address,
-    created_by: address,
-    shared_after: bool,
 }
 
 // === Method Aliases ===
@@ -218,15 +220,10 @@ public use fun release_registry_id as ReleaseRegistry.id;
 fun init(ctx: &mut TxContext) {
     let registry = ReleaseRegistry { id: object::new(ctx) };
     let registry_id = object::id_address(&registry);
-    let created_by = ctx.sender();
 
     transfer::share_object(registry);
 
-    emit(ReleaseRegistryCreatedEvent {
-        registry_id,
-        created_by,
-        shared_after: true,
-    });
+    emit(ReleaseRegistryCreatedEvent { registry_id });
 }
 
 /// Assembles a release under the canonical registry namespace. This is
@@ -236,12 +233,9 @@ fun init(ctx: &mut TxContext) {
 /// in the same PTB.
 public fun new(
     self: &mut ReleaseRegistry,
-    title: String,
     tracks: vector<Track>,
     nonce: u256,
 ): (Release, ReleaseAdminCap) {
-    assert!(!title.is_empty(), EEmptyString);
-    assert!(title.length() <= MAX_TITLE_LENGTH, EMaxTitleLengthExceeded);
     assert!(!tracks.is_empty(), ENoTracks);
     assert!(tracks.length() <= MAX_TRACKS, EMaxTracksExceeded);
 
@@ -252,12 +246,7 @@ public fun new(
     let release_uid = claim(&mut self.id, ReleaseKey(release_digest));
     let mut release = Release {
         id: release_uid,
-        state: ReleaseState::Initialized {
-            registry_id: object::id_address(self),
-            release_digest,
-            nonce,
-        },
-        title,
+        state: ReleaseState::Initialized { nonce },
         tracks,
     };
 
@@ -300,37 +289,22 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap, clock: &Clock) {
     self.authorize(cap);
 
     match (self.state) {
-        ReleaseState::Initialized {
-            registry_id,
-            release_digest,
-            nonce,
-        } => {
+        ReleaseState::Initialized { nonce } => {
             // Assert that the tracks are assigned to the release.
             let track_allocations = self.assign_tracks();
 
-            let timestamp_ms = clock.timestamp_ms();
+            let published_at_ms = clock.timestamp_ms();
 
             // Update the release state to published.
-            self.state = ReleaseState::Published(timestamp_ms);
+            self.state = ReleaseState::Published(published_at_ms);
 
             let release_id = object::id_address(&self);
-            let release_admin_cap_id = object::id_address(cap);
-            let clock_id = object::id_address(clock);
-            let title_bytes = self.title.substring(0, self.title.length()).into_bytes();
-            let assigned_track_count = self.tracks.length();
 
             transfer::share_object(self);
 
             emit(ReleasePublishedEvent {
                 release_id,
-                release_admin_cap_id,
-                clock_id,
-                title_bytes,
-                published_at_ms: timestamp_ms,
-                assigned_track_count,
-                shared_after: true,
-                registry_id,
-                release_digest,
+                published_at_ms,
                 nonce,
                 track_allocations,
             });
@@ -345,11 +319,6 @@ public fun authorize(self: &Release, cap: &ReleaseAdminCap) {
 }
 
 // === View Functions ===
-
-/// Returns the release title.
-public fun title(self: &Release): &String {
-    &self.title
-}
 
 /// Returns a reference to the ordered tracklist. The single tracklist
 /// accessor — consumers derive length, membership, and per-track data from it
@@ -437,15 +406,9 @@ public fun new_registry_for_testing(ctx: &mut TxContext): ReleaseRegistry {
 
 /// Unpacks the initialization event for test-side payload assertions.
 #[test_only]
-public fun release_registry_created_event_fields(
-    event: ReleaseRegistryCreatedEvent,
-): (address, address, bool) {
-    let ReleaseRegistryCreatedEvent {
-        registry_id,
-        created_by,
-        shared_after,
-    } = event;
-    (registry_id, created_by, shared_after)
+public fun release_registry_created_event_fields(event: ReleaseRegistryCreatedEvent): address {
+    let ReleaseRegistryCreatedEvent { registry_id } = event;
+    registry_id
 }
 
 // The state predicates are test-only: create-and-publish is atomic (see the
@@ -454,38 +417,19 @@ public fun release_registry_created_event_fields(
 // information. Tests still need them to verify the transition itself.
 
 /// Unpacks a `ReleasePublishedEvent` for test-side field assertions — the
-/// event's field is module-private, so tests in another module need this
+/// event's fields are module-private, so tests in another module need this
 /// accessor to assert the full payload rather than just "an event fired".
 #[test_only]
 public fun release_published_event_fields(
     event: ReleasePublishedEvent,
-): (address, address, address, vector<u8>, u64, u64, bool, address, vector<u8>, u256, vector<TrackAllocation>) {
+): (address, u64, u256, vector<TrackAllocation>) {
     let ReleasePublishedEvent {
         release_id,
-        release_admin_cap_id,
-        clock_id,
-        title_bytes,
         published_at_ms,
-        assigned_track_count,
-        shared_after,
-        registry_id,
-        release_digest,
         nonce,
         track_allocations,
     } = event;
-    (
-        release_id,
-        release_admin_cap_id,
-        clock_id,
-        title_bytes,
-        published_at_ms,
-        assigned_track_count,
-        shared_after,
-        registry_id,
-        release_digest,
-        nonce,
-        track_allocations,
-    )
+    (release_id, published_at_ms, nonce, track_allocations)
 }
 
 #[test_only]
@@ -511,7 +455,6 @@ public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
 
 #[test_only]
 public fun new_for_testing(
-    title: String,
     tracks: vector<Track>,
     ctx: &mut TxContext,
 ): (Release, ReleaseAdminCap) {
@@ -519,12 +462,7 @@ public fun new_for_testing(
 
     let mut release = Release {
         id: object::new(ctx),
-        state: ReleaseState::Initialized {
-            registry_id: @0x0,
-            release_digest: vector[],
-            nonce: 0,
-        },
-        title,
+        state: ReleaseState::Initialized { nonce: 0 },
         tracks,
     };
 

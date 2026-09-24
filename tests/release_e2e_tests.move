@@ -24,9 +24,7 @@ use musicos::release::{Self, Release, ReleaseRegistry};
 use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
-use sui::bcs::to_bytes;
 use sui::event;
-use sui::hash::blake2b256;
 use sui::test_scenario;
 
 const SONGWRITER: address = @0xA1;
@@ -37,14 +35,6 @@ const READER: address = @0xBEEF;
 const ROYALTY_RATE_BPS: u16 = 1500;
 const NONCE: u256 = 42;
 
-fun expected_digest(recording_ids: vector<ID>, track_split_bps: vector<u64>, nonce: u256): vector<u8> {
-    let mut bytes = vector<u8>[];
-    bytes.append(to_bytes(&recording_ids));
-    bytes.append(to_bytes(&track_split_bps));
-    bytes.append(to_bytes(&nonce));
-    blake2b256(&bytes)
-}
-
 /// The package initializer creates and shares the only production registry,
 /// with an event whose registry id matches the shared object.
 #[test]
@@ -54,10 +44,7 @@ fun init_creates_shared_registry_and_emits_event() {
 
     let mut events = event::events_by_type<release::ReleaseRegistryCreatedEvent>();
     assert_eq!(events.length(), 1);
-    let (event_registry_id, created_by, shared_after) =
-        release::release_registry_created_event_fields(events.pop_back());
-    assert_eq!(created_by, SONGWRITER);
-    assert!(shared_after);
+    let event_registry_id = release::release_registry_created_event_fields(events.pop_back());
 
     scenario.next_tx(READER);
     let registry = scenario.take_shared<ReleaseRegistry>();
@@ -74,7 +61,6 @@ fun full_track_release_flow_publishes_at_derived_id() {
     // === Tx 1 (SONGWRITER): create and publish the composition ===
     scenario.next_tx(SONGWRITER);
     let (comp, comp_cap) = composition::new_for_testing<CompositionShare>(
-        b"Song".to_string(),
         ROYALTY_RATE_BPS,
         scenario.ctx(),
     );
@@ -115,45 +101,21 @@ fun full_track_release_flow_publishes_at_derived_id() {
     // === Tx 4 (LABEL): assemble and publish the release ===
     scenario.next_tx(LABEL);
     let mut registry = scenario.take_shared<ReleaseRegistry>();
-    let registry_id = registry.id();
-    let (rel, rel_cap) = registry.new(
-        b"Single".to_string(),
-        vector[t],
-        NONCE,
-    );
+    let (rel, rel_cap) = registry.new(vector[t], NONCE);
     // The claimed UID must equal the prediction the track was bound to.
     assert_eq!(object::id(&rel), predicted_release_id);
     assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
     let clock = sui::clock::create_for_testing(scenario.ctx());
-    let clock_id = object::id(&clock).to_address();
     rel.publish(&rel_cap, &clock); // verifies track assignment, shares
     clock.destroy_for_testing();
 
     let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
     assert_eq!(published_events.length(), 1);
-    let (
-        event_release_id,
-        event_cap_id,
-        event_clock_id,
-        title_bytes,
-        published_at_ms,
-        assigned_track_count,
-        shared_after,
-        event_registry_id,
-        release_digest,
-        event_nonce,
-        track_allocations,
-    ) = release::release_published_event_fields(published_events.pop_back());
+    let (event_release_id, published_at_ms, event_nonce, track_allocations) =
+        release::release_published_event_fields(published_events.pop_back());
     assert_eq!(event_release_id, predicted_release_id.to_address());
-    assert_eq!(event_cap_id, object::id(&rel_cap).to_address());
-    assert_eq!(event_clock_id, clock_id);
-    assert_eq!(title_bytes, b"Single");
     assert_eq!(published_at_ms, 0);
-    assert_eq!(assigned_track_count, 1);
-    assert!(shared_after);
-    assert_eq!(event_registry_id, registry_id.to_address());
-    assert_eq!(release_digest, expected_digest(vector[recording_id], vector[10000], NONCE));
     assert_eq!(event_nonce, NONCE);
     assert_eq!(track_allocations.length(), 1);
     let (event_composition, event_recording, event_split) =
@@ -161,6 +123,18 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(event_recording, recording_id.to_address());
     assert_eq!(event_composition, composition_id.to_address());
     assert_eq!(event_split, 10000);
+    // The event carries no digest or registry id: both are reconstructible
+    // from the payload alone. Re-deriving the release id from nothing but the
+    // event's allocation and nonce (under the registry announced by
+    // `ReleaseRegistryCreatedEvent`) reproduces `release_id`.
+    assert_eq!(
+        registry.derive_target_release_id(
+            vector[event_recording.to_id()],
+            vector[event_split as u64],
+            event_nonce,
+        ).to_address(),
+        event_release_id,
+    );
 
     destroy(rel_cap);
     test_scenario::return_shared(registry);
@@ -170,7 +144,6 @@ fun full_track_release_flow_publishes_at_derived_id() {
     let rel = scenario.take_shared<Release>();
     assert!(rel.is_published_state());
     assert_eq!(object::id(&rel), predicted_release_id);
-    assert_eq!(*rel.title(), b"Single".to_string());
     assert_eq!(rel.tracks().length(), 1);
     assert!(rel.tracks().any!(|track| track.recording_id() == recording_id));
     let track_ref = &rel.tracks()[0];
@@ -194,7 +167,6 @@ fun publish_aborts_when_track_targets_a_different_release() {
     // One actor for brevity — the binding doesn't depend on senders.
     scenario.next_tx(SONGWRITER);
     let (_comp, _comp_cap) = composition::new_for_testing<CompositionShare>(
-        b"Song".to_string(),
         ROYALTY_RATE_BPS,
         scenario.ctx(),
     );
@@ -217,11 +189,7 @@ fun publish_aborts_when_track_targets_a_different_release() {
     scenario.next_tx(SONGWRITER);
     // ...but the release is created with nonce 2: different derived id.
     let mut registry = scenario.take_shared<ReleaseRegistry>();
-    let (rel, rel_cap) = registry.new(
-        b"Single".to_string(),
-        vector[t],
-        2,
-    );
+    let (rel, rel_cap) = registry.new(vector[t], 2);
     let clock = sui::clock::create_for_testing(scenario.ctx());
     rel.publish(&rel_cap, &clock); // aborts: track targets a different release
 

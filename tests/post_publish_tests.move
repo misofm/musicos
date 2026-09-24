@@ -39,53 +39,21 @@ fun publish_composition(
     scenario: &mut test_scenario::Scenario,
 ): composition::CompositionAdminCap<CompositionShare> {
     let ctx = scenario.ctx();
-    let (comp, cap) =
-        composition::new_for_testing<CompositionShare>(b"Song".to_string(), 1500, ctx);
+    let (comp, cap) = composition::new_for_testing<CompositionShare>(1500, ctx);
     let comp_id = object::id(&comp);
     let mut clock = sui::clock::create_for_testing(ctx);
     sui::clock::set_for_testing(&mut clock, 4242);
-    let clock_id = object::id(&clock).to_address();
     comp.publish(&cap, &clock);
     clock.destroy_for_testing();
 
-    // Event payload captures the final immutable fields and shared-object linkage.
+    // Event payload captures the identity, the immutable rate, and the timestamp.
     let mut events = event::events_by_type<CompositionPublishedEvent<CompositionShare>>();
     assert_eq!(events.length(), 1);
-    let (
-        event_comp_id,
-        event_cap_id,
-        event_clock_id,
-        title_bytes,
-        rate_bps,
-        published_at_ms,
-        shared_after,
-        share_currency_id,
-        consumed_treasury_cap_id,
-        created_by,
-        share_supply_before,
-        share_supply_after,
-        shares_returned,
-        share_decimals,
-        share_supply_fixed_after,
-        created_admin_cap_id,
-    ) =
+    let (event_comp_id, rate_bps, published_at_ms) =
         composition::composition_published_event_fields(events.pop_back());
     assert_eq!(event_comp_id, comp_id.to_address());
-    assert_eq!(event_cap_id, object::id(&cap).to_address());
-    assert_eq!(event_clock_id, clock_id);
-    assert_eq!(title_bytes, b"Song");
     assert_eq!(rate_bps, 1500);
     assert_eq!(published_at_ms, 4242);
-    assert!(shared_after);
-    assert_eq!(share_currency_id, @0x0);
-    assert_eq!(consumed_treasury_cap_id, @0x0);
-    assert_eq!(created_by, @0x0);
-    assert_eq!(share_supply_before, 0);
-    assert_eq!(share_supply_after, 0);
-    assert_eq!(shares_returned, 0);
-    assert_eq!(share_decimals, 0);
-    assert!(!share_supply_fixed_after);
-    assert_eq!(created_admin_cap_id, @0x0);
 
     cap
 }
@@ -103,68 +71,31 @@ fun publish_recording(
     let rec_id = object::id(&rec);
     let mut clock = sui::clock::create_for_testing(ctx);
     sui::clock::set_for_testing(&mut clock, 4343);
-    let clock_id = object::id(&clock).to_address();
     rec.publish(&cap, &clock);
     clock.destroy_for_testing();
 
-    // Event payload captures the recording/composition linkage and shared clock.
+    // Event payload captures the recording/composition linkage, the applied
+    // rate, and the timestamp.
     let mut events = event::events_by_type<RecordingPublishedEvent<RecordingShare>>();
     assert_eq!(events.length(), 1);
-    let (
-        event_rec_id,
-        event_comp_id,
-        event_cap_id,
-        event_clock_id,
-        published_at_ms,
-        shared_after,
-        share_currency_id,
-        consumed_treasury_cap_id,
-        created_by,
-        composition_royalty_rate_bps,
-        share_supply_before,
-        shares_before_grant,
-        composition_shares_granted,
-        shares_returned,
-        share_decimals,
-        share_supply_fixed_after,
-        composition_funds_sent,
-        created_admin_cap_id,
-    ) =
+    let (event_rec_id, event_comp_id, composition_royalty_rate_bps, published_at_ms) =
         recording::recording_published_event_fields(events.pop_back());
     assert_eq!(event_rec_id, rec_id.to_address());
     assert_eq!(event_comp_id, composition_id.to_address());
-    assert_eq!(event_cap_id, object::id(&cap).to_address());
-    assert_eq!(event_clock_id, clock_id);
-    assert_eq!(published_at_ms, 4343);
-    assert!(shared_after);
-    assert_eq!(share_currency_id, @0x0);
-    assert_eq!(consumed_treasury_cap_id, @0x0);
-    assert_eq!(created_by, @0x0);
     assert_eq!(composition_royalty_rate_bps, 0);
-    assert_eq!(share_supply_before, 0);
-    assert_eq!(shares_before_grant, 0);
-    assert_eq!(composition_shares_granted, 0);
-    assert_eq!(shares_returned, 0);
-    assert_eq!(share_decimals, 0);
-    assert!(!share_supply_fixed_after);
-    assert!(!composition_funds_sent);
-    assert_eq!(created_admin_cap_id, @0x0);
+    assert_eq!(published_at_ms, 4343);
 
     cap
 }
 
-/// Publishes a minimal release under the given title and returns its admin
-/// cap and id (object is shared). Titled per-call so a test can create more
-/// than one distinguishable shared `Release` and disambiguate them by id.
-fun publish_titled_release(
-    scenario: &mut test_scenario::Scenario,
-    title: vector<u8>,
-): (release::ReleaseAdminCap, ID) {
+/// Publishes a minimal release and returns its admin cap and id (object is
+/// shared). The id lets a test that publishes more than one shared `Release`
+/// disambiguate them — a release carries no title or other naming field.
+fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAdminCap, ID) {
     let ctx = scenario.ctx();
     let composition_id = test_helpers::fake_id(ctx);
     let recording_id = test_helpers::fake_id(ctx);
     let (rel, cap) = release::new_for_testing(
-        title.to_string(),
         vector[musicos::track::new_for_testing(
             composition_id,
             recording_id,
@@ -176,37 +107,28 @@ fun publish_titled_release(
     let rel_id = object::id(&rel);
     let mut clock = sui::clock::create_for_testing(ctx);
     sui::clock::set_for_testing(&mut clock, 4444);
-    let clock_id = object::id(&clock).to_address();
     rel.publish(&cap, &clock);
     clock.destroy_for_testing();
 
     // Popping the most recent event is safe even when a test publishes more
     // than one release, since each publish appends exactly one event.
+    // Event payload captures the identity, the timestamp, the nonce, and the
+    // complete ordered allocation.
     let mut events = event::events_by_type<ReleasePublishedEvent>();
     assert!(!events.is_empty());
-    let (event_rel_id, event_cap_id, event_clock_id, title_bytes, published_at_ms,
-        assigned_track_count, shared_after,
-        registry_id, release_digest, nonce, track_allocations) =
+    let (event_rel_id, published_at_ms, nonce, track_allocations) =
         release::release_published_event_fields(events.pop_back());
     assert_eq!(event_rel_id, rel_id.to_address());
-    assert_eq!(event_cap_id, object::id(&cap).to_address());
-    assert_eq!(event_clock_id, clock_id);
-    assert_eq!(title_bytes, title);
     assert_eq!(published_at_ms, 4444);
-    assert_eq!(assigned_track_count, 1);
-    assert!(shared_after);
-    assert_eq!(registry_id, @0x0);
-    assert_eq!(release_digest, vector[]);
     assert_eq!(nonce, 0);
     assert_eq!(track_allocations.length(), 1);
+    let (event_composition, event_recording, event_split) =
+        release::track_allocation_fields(track_allocations[0]);
+    assert_eq!(event_composition, composition_id.to_address());
+    assert_eq!(event_recording, recording_id.to_address());
+    assert_eq!(event_split, 10000);
 
     (cap, rel_id)
-}
-
-/// Publishes a minimal release and returns its admin cap (object is shared).
-fun publish_release(scenario: &mut test_scenario::Scenario): release::ReleaseAdminCap {
-    let (cap, _rel_id) = publish_titled_release(scenario, b"Album");
-    cap
 }
 
 // === Composition ===
@@ -273,7 +195,7 @@ fun recording_publish_twice_aborts() {
 #[test, expected_failure(abort_code = ENotInitializedState, location = musicos::release)]
 fun release_publish_twice_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
-    let cap = publish_release(&mut scenario);
+    let (cap, _rel_id) = publish_release(&mut scenario);
 
     scenario.next_tx(OWNER);
     let rel = scenario.take_shared<Release>();
@@ -307,7 +229,7 @@ fun recording_uid_mut_works_after_publish() {
 #[test]
 fun release_uid_mut_works_after_publish() {
     let mut scenario = test_scenario::begin(OWNER);
-    let cap = publish_release(&mut scenario);
+    let (cap, _rel_id) = publish_release(&mut scenario);
 
     scenario.next_tx(OWNER);
     let mut rel = scenario.take_shared<Release>();
@@ -330,13 +252,12 @@ fun release_uid_mut_works_after_publish() {
 #[test, expected_failure(abort_code = EUnauthorized, location = musicos::release)]
 fun release_uid_mut_wrong_cap_aborts() {
     let mut scenario = test_scenario::begin(OWNER);
-    let (owner_cap, owner_rel_id) = publish_titled_release(&mut scenario, b"Owner's Album");
+    let (owner_cap, owner_rel_id) = publish_release(&mut scenario);
 
     // STRANGER publishes and shares an entirely unrelated release, and holds
     // that release's own (validly-scoped) cap.
     scenario.next_tx(STRANGER);
-    let (stranger_cap, _stranger_rel_id) =
-        publish_titled_release(&mut scenario, b"Stranger's Album");
+    let (stranger_cap, _stranger_rel_id) = publish_release(&mut scenario);
 
     // STRANGER now tries to open uid_mut on OWNER's release using their own
     // cap — disambiguated from STRANGER's own shared release by id.

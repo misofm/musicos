@@ -18,6 +18,13 @@
 /// `uid_mut`, so core takes no dependency on an identity package and core
 /// publish enforces no attribution.
 ///
+/// The same rule governs naming: a composition carries no title. A title has
+/// more than one correct rendering — translations, alternate titles,
+/// corrections — which makes it presentation, and presentation lives in the
+/// metadata extension, never in the frozen core. The economics never read a
+/// name. Core stores what a composition *is*: its identity, its share type,
+/// and the royalty rate it earns from recordings; extensions describe it.
+///
 /// ### Lifecycle and trust model
 ///
 /// A composition is `key`-only with no `drop`: a fresh `Initialized` object
@@ -39,7 +46,6 @@ module musicos::composition;
 
 use bps::bps::{Self, BPS};
 use share::share;
-use std::string::String;
 use sui::balance::Balance;
 use sui::clock::Clock;
 use sui::coin::TreasuryCap;
@@ -53,17 +59,6 @@ use sui::event::emit;
 /// Operation requires Initialized state but composition is in a different state.
 const ENotInitializedState: u64 = 10;
 
-// Constraint errors (30-39)
-/// Title exceeds maximum length.
-const EMaxTitleLengthExceeded: u64 = 33;
-/// String must not be empty.
-const EEmptyString: u64 = 35;
-
-// === Constants ===
-
-/// Maximum length of a title in bytes.
-const MAX_TITLE_LENGTH: u64 = 300;
-
 // === Structs ===
 
 /// A musical composition representing the underlying written work.
@@ -73,8 +68,6 @@ public struct Composition<phantom CompositionShare> has key {
     id: UID,
     /// Current lifecycle state.
     state: CompositionState,
-    /// Primary title of the composition.
-    title: String,
     /// Royalty rate this composition earns from each recording's revenue.
     royalty_rate: BPS,
 }
@@ -94,18 +87,10 @@ public struct CompositionAdminCapKey() has copy, drop, store;
 
 /// Lifecycle state of a composition.
 public enum CompositionState has copy, drop, store {
-    /// Composition is initialized but not published.
-    Initialized {
-        share_currency_id: address,
-        consumed_treasury_cap_id: address,
-        created_by: address,
-        share_supply_before: u64,
-        share_supply_after: u64,
-        shares_returned: u64,
-        share_decimals: u8,
-        share_supply_fixed_after: bool,
-        created_admin_cap_id: address,
-    },
+    /// Composition is initialized but not published. Carries nothing:
+    /// everything `publish` needs is an embedded field or a `publish`
+    /// argument.
+    Initialized,
     /// Composition is published and immutable. Includes publication timestamp.
     Published(
         /// Timestamp (ms) when published.
@@ -116,28 +101,27 @@ public enum CompositionState has copy, drop, store {
 // === Events ===
 
 /// Emitted once when a composition is published.
+///
+/// The payload is deliberately minimal. A field is carried only if an indexer
+/// reading musicos events alone would otherwise need an object lookup to
+/// obtain it and it matters to the business: the composition's identity, its
+/// immutable royalty rate, and when it was published. Everything else about
+/// the publication is derivable without a lookup — the share type from the
+/// event's type argument; the sender from the transaction envelope; the share
+/// currency and consumed treasury cap ids from the `share::ShareInitializedEvent`
+/// emitted in the same transaction; the admin cap id as the derived address of
+/// `composition_id` under `CompositionAdminCapKey`; and the share supply
+/// (100M · 10^6, 6 decimals, zero before, fixed after, returned in full to the
+/// creator) from `share::initialize`'s constants.
 public struct CompositionPublishedEvent<phantom CompositionShare> has copy, drop {
     composition_id: address,
-    composition_admin_cap_id: address,
-    clock_id: address,
-    title_bytes: vector<u8>,
     royalty_rate_bps: u16,
     published_at_ms: u64,
-    shared_after: bool,
-    share_currency_id: address,
-    consumed_treasury_cap_id: address,
-    created_by: address,
-    share_supply_before: u64,
-    share_supply_after: u64,
-    shares_returned: u64,
-    share_decimals: u8,
-    share_supply_fixed_after: bool,
-    created_admin_cap_id: address,
 }
 
 // === Public Functions ===
 
-/// Creates a new composition with the given title and royalty rate.
+/// Creates a new composition with the given royalty rate.
 ///
 /// The rate is set once, here, and is immutable for the composition's
 /// lifetime: it is a permanent standing offer that recorders and share buyers
@@ -153,39 +137,18 @@ public struct CompositionPublishedEvent<phantom CompositionShare> has copy, drop
 /// - Admin capability for the owner
 /// - Initial share token balance
 public fun new<CompositionShare>(
-    title: String,
     royalty_rate_bps: u16,
     share_currency: &mut Currency<CompositionShare>,
-    mut share_treasury_cap: TreasuryCap<CompositionShare>,
+    share_treasury_cap: TreasuryCap<CompositionShare>,
     ctx: &mut TxContext,
 ): (
     Composition<CompositionShare>,
     CompositionAdminCap<CompositionShare>,
     Balance<CompositionShare>,
 ) {
-    assert!(!title.is_empty(), EEmptyString);
-    assert!(title.length() <= MAX_TITLE_LENGTH, EMaxTitleLengthExceeded);
-
-    let share_currency_id = object::id_address(share_currency);
-    let consumed_treasury_cap_id = object::id_address(&share_treasury_cap);
-    let share_decimals = share_currency.decimals();
-    let share_supply_before = share_treasury_cap.supply().value();
-    let created_by = ctx.sender();
-
     let mut composition = Composition<CompositionShare> {
         id: object::new(ctx),
-        state: CompositionState::Initialized {
-            share_currency_id,
-            consumed_treasury_cap_id,
-            created_by,
-            share_supply_before,
-            share_supply_after: 0,
-            shares_returned: 0,
-            share_decimals,
-            share_supply_fixed_after: false,
-            created_admin_cap_id: @0x0,
-        },
-        title,
+        state: CompositionState::Initialized,
         royalty_rate: bps::new(royalty_rate_bps),
     };
 
@@ -198,23 +161,6 @@ public fun new<CompositionShare>(
         share_treasury_cap,
     );
 
-    let composition_admin_cap_id = object::id_address(&composition_admin_cap);
-    let share_supply_after = composition_shares.value();
-    let shares_returned = composition_shares.value();
-    let share_supply_fixed_after = share_currency.is_supply_fixed();
-
-    composition.state = CompositionState::Initialized {
-        share_currency_id,
-        consumed_treasury_cap_id,
-        created_by,
-        share_supply_before,
-        share_supply_after,
-        shares_returned,
-        share_decimals,
-        share_supply_fixed_after,
-        created_admin_cap_id: composition_admin_cap_id,
-    };
-
     (composition, composition_admin_cap, composition_shares)
 }
 
@@ -225,49 +171,23 @@ public fun new<CompositionShare>(
 /// extension and may be attached before or after publish via `uid_mut`.
 public fun publish<CompositionShare>(
     mut self: Composition<CompositionShare>,
-    cap: &CompositionAdminCap<CompositionShare>,
+    _: &CompositionAdminCap<CompositionShare>,
     clock: &Clock,
 ) {
     match (self.state) {
-        CompositionState::Initialized {
-            share_currency_id,
-            consumed_treasury_cap_id,
-            created_by,
-            share_supply_before,
-            share_supply_after,
-            shares_returned,
-            share_decimals,
-            share_supply_fixed_after,
-            created_admin_cap_id,
-        } => {
+        CompositionState::Initialized => {
             let published_at_ms = clock.timestamp_ms();
             self.state = CompositionState::Published(published_at_ms);
 
             let composition_id = object::id_address(&self);
-            let composition_admin_cap_id = object::id_address(cap);
-            let clock_id = object::id_address(clock);
-            let title_bytes = self.title.substring(0, self.title.length()).into_bytes();
             let royalty_rate_bps = self.royalty_rate.value();
 
             transfer::share_object(self);
 
             emit(CompositionPublishedEvent<CompositionShare> {
                 composition_id,
-                composition_admin_cap_id,
-                clock_id,
-                title_bytes,
                 royalty_rate_bps,
                 published_at_ms,
-                shared_after: true,
-                share_currency_id,
-                consumed_treasury_cap_id,
-                created_by,
-                share_supply_before,
-                share_supply_after,
-                shares_returned,
-                share_decimals,
-                share_supply_fixed_after,
-                created_admin_cap_id,
             });
         },
         _ => abort ENotInitializedState,
@@ -275,11 +195,6 @@ public fun publish<CompositionShare>(
 }
 
 // === View Functions ===
-
-/// Returns the primary title.
-public fun title<CompositionShare>(self: &Composition<CompositionShare>): &String {
-    &self.title
-}
 
 /// Returns the royalty rate this composition earns from each recording.
 /// Immutable for the composition's lifetime — the value read here is, by
@@ -316,7 +231,7 @@ public fun uid_mut<CompositionShare>(
 #[test_only]
 public fun is_initialized_state<CompositionShare>(self: &Composition<CompositionShare>): bool {
     match (self.state) {
-        CompositionState::Initialized { .. } => true,
+        CompositionState::Initialized => true,
         _ => false,
     }
 }
@@ -336,27 +251,12 @@ public fun published_state_bcs_bytes(timestamp_ms: u64): vector<u8> {
 
 #[test_only]
 public fun new_for_testing<CompositionShare>(
-    title: String,
     royalty_rate_bps: u16,
     ctx: &mut TxContext,
 ): (Composition<CompositionShare>, CompositionAdminCap<CompositionShare>) {
-    assert!(!title.is_empty(), EEmptyString);
-    assert!(title.length() <= MAX_TITLE_LENGTH, EMaxTitleLengthExceeded);
-
     let mut composition = Composition<CompositionShare> {
         id: object::new(ctx),
-        state: CompositionState::Initialized {
-            share_currency_id: @0x0,
-            consumed_treasury_cap_id: @0x0,
-            created_by: @0x0,
-            share_supply_before: 0,
-            share_supply_after: 0,
-            shares_returned: 0,
-            share_decimals: 0,
-            share_supply_fixed_after: false,
-            created_admin_cap_id: @0x0,
-        },
-        title,
+        state: CompositionState::Initialized,
         royalty_rate: bps::new(royalty_rate_bps),
     };
 
@@ -368,46 +268,16 @@ public fun new_for_testing<CompositionShare>(
 }
 
 /// Unpacks a `CompositionPublishedEvent` for test-side field assertions —
-/// the event's field is module-private, so tests in another module need this
-/// accessor to assert the full payload rather than just "an event fired".
+/// the event's fields are module-private, so tests in another module need this
+/// accessor to assert the payload rather than just "an event fired".
 #[test_only]
 public fun composition_published_event_fields<CompositionShare>(
     event: CompositionPublishedEvent<CompositionShare>,
-): (address, address, address, vector<u8>, u16, u64, bool, address, address, address, u64, u64, u64, u8, bool, address) {
+): (address, u16, u64) {
     let CompositionPublishedEvent {
         composition_id,
-        composition_admin_cap_id,
-        clock_id,
-        title_bytes,
         royalty_rate_bps,
         published_at_ms,
-        shared_after,
-        share_currency_id,
-        consumed_treasury_cap_id,
-        created_by,
-        share_supply_before,
-        share_supply_after,
-        shares_returned,
-        share_decimals,
-        share_supply_fixed_after,
-        created_admin_cap_id,
     } = event;
-    (
-        composition_id,
-        composition_admin_cap_id,
-        clock_id,
-        title_bytes,
-        royalty_rate_bps,
-        published_at_ms,
-        shared_after,
-        share_currency_id,
-        consumed_treasury_cap_id,
-        created_by,
-        share_supply_before,
-        share_supply_after,
-        shares_returned,
-        share_decimals,
-        share_supply_fixed_after,
-        created_admin_cap_id,
-    )
+    (composition_id, royalty_rate_bps, published_at_ms)
 }

@@ -19,23 +19,10 @@ use std::unit_test::{assert_eq, destroy};
 // Error codes from release.move
 const EInvalidTrackSplitsSum: u64 = 20;
 const EMaxTracksExceeded: u64 = 31;
-const EMaxTitleLengthExceeded: u64 = 34;
-const EEmptyString: u64 = 35;
 const ENoTracks: u64 = 51;
 
 // Must match release.move
 const MAX_TRACKS: u64 = 255;
-const MAX_TITLE_LENGTH: u64 = 300;
-
-/// Helper to create a single test track.
-fun test_track(ctx: &mut TxContext): track::Track {
-    track::new_for_testing(
-        test_helpers::fake_id(ctx),
-        test_helpers::fake_id(ctx),
-        test_helpers::fake_id(ctx),
-        10000, // 100% split (single track)
-    )
-}
 
 /// Helper to create an ordered tracklist of n tracks sharing splits evenly.
 fun test_tracks(track_count: u64, split_bps: u16, ctx: &mut TxContext): vector<track::Track> {
@@ -57,27 +44,14 @@ fun composition_and_recording(
     recording::RecordingAdminCap<RecordingShare>,
 ) {
     let (comp, comp_cap) =
-        composition::new_for_testing<CompositionShare>(b"Song".to_string(), 1500, ctx);
+        composition::new_for_testing<CompositionShare>(1500, ctx);
     let (rec, rec_cap) =
         recording::new_for_testing<RecordingShare>(object::id(&comp), ctx);
     (comp, comp_cap, rec, rec_cap)
 }
 
-// === Title Length ===
-
-#[test, expected_failure(abort_code = EMaxTitleLengthExceeded, location = musicos::release)]
-fun new_title_too_long_aborts() {
-    let ctx = &mut tx_context::dummy();
-    let mut registry = release::new_registry_for_testing(ctx);
-    let (rel, cap) = registry.new(
-        test_helpers::long_string(MAX_TITLE_LENGTH + 1),
-        vector[test_track(ctx)],
-        0u256,
-    );
-    destroy(rel);
-    destroy(cap);
-    destroy(registry);
-}
+// A release carries no title (display titles live in the `release_metadata`
+// extension), so there is no title-length or empty-title validation to test.
 
 // === Max Tracks ===
 
@@ -95,11 +69,7 @@ fun new_exceeds_max_tracks_aborts() {
         if (index < 16) 40 else 39,
     ));
 
-    let (rel, cap) = registry.new(
-        b"Too Many Tracks".to_string(),
-        tracks,
-        0u256,
-    );
+    let (rel, cap) = registry.new(tracks, 0u256);
     destroy(rel);
     destroy(cap);
     destroy(registry);
@@ -107,38 +77,16 @@ fun new_exceeds_max_tracks_aborts() {
 
 /// Helper to create a minimal release.
 fun test_release(ctx: &mut TxContext): (release::Release, release::ReleaseAdminCap) {
-    release::new_for_testing(
-        b"Album".to_string(),
-        test_tracks(1, 10000, ctx),
-        ctx,
-    )
+    release::new_for_testing(test_tracks(1, 10000, ctx), ctx)
 }
 
 // === Creation Validation ===
-
-#[test, expected_failure(abort_code = EEmptyString, location = musicos::release)]
-fun new_empty_title_aborts() {
-    let ctx = &mut tx_context::dummy();
-    let mut registry = release::new_registry_for_testing(ctx);
-    let (rel, cap) = registry.new(
-        b"".to_string(),
-        vector[test_track(ctx)],
-        0u256,
-    );
-    destroy(rel);
-    destroy(cap);
-    destroy(registry);
-}
 
 #[test, expected_failure(abort_code = ENoTracks, location = musicos::release)]
 fun new_without_tracks_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
-    let (rel, cap) = registry.new(
-        b"Empty".to_string(),
-        vector[],
-        0u256,
-    );
+    let (rel, cap) = registry.new(vector[], 0u256);
     destroy(rel);
     destroy(cap);
     destroy(registry);
@@ -149,7 +97,6 @@ fun new_with_splits_below_total_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
     let (rel, cap) = registry.new(
-        b"Underweight".to_string(),
         test_tracks(1, 9999, ctx), // 99.99%
         0u256,
     );
@@ -163,7 +110,6 @@ fun new_with_splits_above_total_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
     let (rel, cap) = registry.new(
-        b"Overweight".to_string(),
         test_tracks(2, 5001, ctx), // 100.02%
         0u256,
     );
@@ -183,13 +129,11 @@ fun duplicate_digest_aborts() {
 
     let comp_id = test_helpers::fake_id(ctx);
     let (rel1, cap1) = registry.new(
-        b"First".to_string(),
         vector[track::new_for_testing(comp_id, rec_id, rel_id, 10000)],
         7u256,
     );
     // Identical recording ids, splits, and nonce: identical digest.
     let (rel2, cap2) = registry.new(
-        b"Second".to_string(),
         vector[track::new_for_testing(comp_id, rec_id, rel_id, 10000)],
         7u256,
     );
@@ -217,7 +161,6 @@ fun release_views_reflect_initialized_release() {
 
     assert!(rel.is_initialized_state());
     assert!(!rel.is_published_state());
-    assert_eq!(*rel.title(), b"Album".to_string());
     assert_eq!(rel.tracks().length(), 1);
     assert_eq!(cap.release_id(), object::id(&rel));
 
