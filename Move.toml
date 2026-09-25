@@ -2,7 +2,7 @@
 name = "musicos"
 edition = "2024"
 license = "Apache 2.0"
-authors = ["Miso Labs, Inc. (build@miso.network)"]
+authors = ["Miso Labs, Inc. (build@miso.fm)"]
 
 [dependencies]
 bps = { git = "https://github.com/unconfirmedlabs/bps.git", rev = "4ca1972a67d35c972ca567de7b08315e3778e52b" }
