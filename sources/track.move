@@ -33,6 +33,11 @@ public struct TrackConsent has drop, store {
     track: Track,
 }
 
+// === Method Aliases ===
+
+public use fun track_consent_release_id as TrackConsent.release_id;
+public use fun track_consent_track as TrackConsent.track;
+
 // === Public Functions ===
 
 /// Consents to inclusion in a release at the given split.
@@ -67,10 +72,10 @@ public fun split_bps(self: &Track): BPS {
 }
 
 /// The release authorized by this consent.
-public fun release_id(self: &TrackConsent): ID { self.release_id }
+public fun track_consent_release_id(consent: &TrackConsent): ID { consent.release_id }
 
 /// Read-only access to the consented recording and split.
-public fun track(self: &TrackConsent): &Track { &self.track }
+public fun track_consent_track(consent: &TrackConsent): &Track { &consent.track }
 
 // === Package Functions ===
 
