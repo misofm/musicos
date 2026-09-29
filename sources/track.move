@@ -14,32 +14,18 @@ use musicos::recording::{Recording, RecordingAdminCap};
 
 /// Track's target release ID does not match the assigning release.
 const EUnauthorizedAssignment: u64 = 0;
-/// Track has already been assigned to a release.
-const EAlreadyAssigned: u64 = 1;
 
 // === Structs ===
 
 /// A recording on a release with its revenue split.
 public struct Track has drop, store {
-    /// Assign-once lifecycle; see `TrackState`.
-    state: TrackState,
+    /// The release identity consented to by the recording admin.
+    target_release_id: ID,
     /// The recording on this track and the routing target for its revenue.
     recording_id: ID,
     /// This track's share of the release's revenue. All tracks in a release
     /// sum to 100%; downstream allocations belong to extensions.
     split_bps: BPS,
-}
-
-// === Enums ===
-
-/// A track is born `Unassigned` with the target release id its creator
-/// consented to; `release::publish` verifies the match and moves it to
-/// `Assigned`, shedding the id.
-public enum TrackState has drop, store {
-    /// Not yet assigned; carries the consented target release id.
-    Unassigned(ID),
-    /// Assigned to its target release.
-    Assigned,
 }
 
 // === Public Functions ===
@@ -61,7 +47,7 @@ public fun new(
 ): Track {
     recording.authorize(cap);
     Track {
-        state: TrackState::Unassigned(target_release_id),
+        target_release_id,
         recording_id: object::id(recording),
         split_bps: bps::new(track_split_bps_value),
     }
@@ -79,44 +65,19 @@ public fun split_bps(self: &Track): BPS {
     self.split_bps
 }
 
-/// Returns the target release id this track's creator consented to.
-/// Aborts with `EAlreadyAssigned` if the track is `Assigned`: such a track
-/// only exists inside a published release, so its release is already known.
+/// Returns the release identity consented to at creation, including after publication.
 public fun target_release_id(self: &Track): ID {
-    match (&self.state) {
-        TrackState::Unassigned(target_release_id) => *target_release_id,
-        TrackState::Assigned => abort EAlreadyAssigned,
-    }
+    self.target_release_id
 }
 
 // === Package Functions ===
 
-/// Assigns the track to a release whose UID matches its target. Aborts with
-/// `EUnauthorizedAssignment` on a mismatch and `EAlreadyAssigned` if called twice.
-public(package) fun assign(self: &mut Track, release_uid: &UID) {
-    match (&self.state) {
-        TrackState::Unassigned(target_release_id) => {
-            assert!(release_uid.to_inner() == *target_release_id, EUnauthorizedAssignment);
-            self.state = TrackState::Assigned;
-        },
-        TrackState::Assigned => abort EAlreadyAssigned,
-    }
+/// Verifies that the enclosing release matches the recording admin's consent.
+public(package) fun validate_target(self: &Track, release_uid: &UID) {
+    assert!(release_uid.to_inner() == self.target_release_id, EUnauthorizedAssignment);
 }
 
 // === Test Functions ===
-
-// State predicates are test-only: a track inside a (published) release is
-// always `Assigned`, and a track anywhere else is always `Unassigned`.
-
-#[test_only]
-public fun is_assigned_state(self: &Track): bool {
-    match (&self.state) { TrackState::Assigned => true, _ => false }
-}
-
-#[test_only]
-public fun is_unassigned_state(self: &Track): bool {
-    match (&self.state) { TrackState::Unassigned(_) => true, _ => false }
-}
 
 #[test_only]
 public fun new_for_testing(
@@ -125,7 +86,7 @@ public fun new_for_testing(
     split_bps_value: u16,
 ): Track {
     Track {
-        state: TrackState::Unassigned(target_release_id),
+        target_release_id,
         recording_id,
         split_bps: bps::new(split_bps_value),
     }
@@ -133,5 +94,5 @@ public fun new_for_testing(
 
 #[test_only]
 public fun set_target_release_id_for_testing(self: &mut Track, target_release_id: ID) {
-    self.state = TrackState::Unassigned(target_release_id);
+    self.target_release_id = target_release_id;
 }

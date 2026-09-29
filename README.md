@@ -13,7 +13,7 @@ Core defines compositions, recordings, releases, and tracks. Creating an identit
 | `Composition` | Identity and lifecycle |
 | `Recording` | Identity, lifecycle, and immutable composition ID |
 | `Release` | Identity, lifecycle, and ordered tracks |
-| `Track` | Recording ID, release revenue split, and assignment consent |
+| `Track` | Recording ID, release revenue split, and target release ID |
 
 Composition and recording types and their events have no ownership type parameters.
 Anyone can create a recording referencing an existing composition. The reference establishes a relationship; it does not establish a license or impose a commission.
@@ -58,7 +58,8 @@ the ordered `(recording_id, split)` pairs and creator nonce under the shared
 `ReleaseRegistry`. Splits must total 10,000 basis points.
 
 A recording admin creates a track targeting that exact release ID. Publication checks
-each track's target before assigning it. Consent therefore binds membership, ordering,
+each track's target. Containment in a release represents assignment; tracks have no
+separate assignment state, and their target IDs remain readable after publication. Consent therefore binds membership, ordering,
 and release splits. Names, artwork, and other extension data are outside that commitment.
 
 The registry is created once during package initialization. Release creation is

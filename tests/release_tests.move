@@ -129,11 +129,11 @@ fun release_views_reflect_initialized_release() {
 
 // === track::new ===
 
-/// `track::new` produces an `Unassigned` track carrying the target release id
+/// `track::new` produces a track carrying the target release id
 /// and split it was called with, and reads the recording id off the
 /// `&Recording` argument.
 #[test]
-fun track_new_creates_unassigned_track() {
+fun track_new_records_consent() {
     let ctx = &mut tx_context::dummy();
     let (comp, comp_cap, rec, rec_cap) = composition_and_recording(ctx);
     let target_release_id = test_helpers::fake_id(ctx);
@@ -143,8 +143,6 @@ fun track_new_creates_unassigned_track() {
     assert_eq!(t.recording_id(), object::id(&rec));
     assert_eq!(t.split_bps().value(), 10000);
     assert_eq!(t.target_release_id(), target_release_id);
-    assert!(t.is_unassigned_state());
-    assert!(!t.is_assigned_state());
 
     destroy(t);
     destroy(comp);

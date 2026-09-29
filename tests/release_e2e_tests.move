@@ -136,7 +136,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(rel.tracks().length(), 1);
     assert!(rel.tracks().any!(|track| track.recording_id() == recording_id));
     let track_ref = &rel.tracks()[0];
-    assert!(track_ref.is_assigned_state());
+    assert_eq!(track_ref.target_release_id(), predicted_release_id);
     assert_eq!(track_ref.recording_id(), recording_id);
     assert_eq!(track_ref.split_bps().value(), 10000);
     test_scenario::return_shared(rel);

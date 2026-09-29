@@ -189,7 +189,7 @@ public fun publish(mut self: Release, cap: &ReleaseAdminCap) {
     match (&self.state) {
         ReleaseState::Initialized { nonce } => {
             let nonce = *nonce;
-            self.assign_tracks();
+            self.validate_tracks();
             self.state = ReleaseState::Published;
 
             let release_id = object::id(&self);
@@ -244,13 +244,13 @@ fun calculate_release_digest(
     blake2b256(&hash_input)
 }
 
-/// Assigns every track to this release (verifying its target) and emits one
+/// Validates every track's target and emits one
 /// `ReleaseTrackAssignedEvent` per track in tracklist order.
-fun assign_tracks(self: &mut Release) {
+fun validate_tracks(self: &Release) {
     let release_id = self.id.to_inner();
     let mut position = 0;
-    self.tracks.do_mut!(|track| {
-        track.assign(&self.id);
+    self.tracks.do_ref!(|track| {
+        track.validate_target(&self.id);
         emit(ReleaseTrackAssignedEvent {
             release_id,
             position,
@@ -326,7 +326,7 @@ public fun new_for_testing(
         tracks,
     };
 
-    // Retarget every track at this release so `publish` can assign it.
+    // Retarget every track at this release so `publish` can validate it.
     let release_id = object::id(&release);
     release.tracks.do_mut!(|track| track.set_target_release_id_for_testing(release_id));
 
