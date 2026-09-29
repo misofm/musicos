@@ -11,7 +11,7 @@ module musicos::post_publish_tests;
 use musicos::composition::{Self, Composition, CompositionPublishedEvent};
 use musicos::recording::{Self, Recording, RecordingPublishedEvent};
 use musicos::release::{Self, Release, ReleasePublishedEvent};
-use musicos::test_helpers::{Self, CompositionShare, RecordingShare};
+use musicos::test_helpers;
 use musicos::track;
 use std::unit_test::{assert_eq, destroy};
 use sui::dynamic_field;
@@ -34,19 +34,18 @@ fun published_state_bcs_layout_keeps_variant_tag() {
 /// Publishes a minimal composition and returns its admin cap (object is shared).
 fun publish_composition(
     scenario: &mut test_scenario::Scenario,
-): composition::CompositionAdminCap<CompositionShare> {
+): composition::CompositionAdminCap {
     let ctx = scenario.ctx();
-    let (comp, cap) = composition::new_for_testing<CompositionShare>(1500, ctx);
+    let (comp, cap) = composition::new(ctx);
     let comp_id = object::id(&comp);
     comp.publish(&cap);
 
-    // Event payload captures the identity and the immutable rate.
-    let mut events = event::events_by_type<CompositionPublishedEvent<CompositionShare>>();
+    // Event payload captures the identity.
+    let mut events = event::events_by_type<CompositionPublishedEvent>();
     assert_eq!(events.length(), 1);
-    let (event_comp_id, rate_bps) =
+    let event_comp_id =
         composition::composition_published_event_fields(events.pop_back());
     assert_eq!(event_comp_id, comp_id);
-    assert_eq!(rate_bps, 1500);
 
     cap
 }
@@ -54,10 +53,10 @@ fun publish_composition(
 /// Publishes a minimal recording and returns its admin cap (object is shared).
 fun publish_recording(
     scenario: &mut test_scenario::Scenario,
-): recording::RecordingAdminCap<RecordingShare> {
+): recording::RecordingAdminCap {
     let ctx = scenario.ctx();
     let composition_id = test_helpers::fake_id(ctx);
-    let (rec, cap) = recording::new_for_testing<RecordingShare>(
+    let (rec, cap) = recording::new_for_testing(
         composition_id,
         ctx,
     );
@@ -65,7 +64,7 @@ fun publish_recording(
     rec.publish(&cap);
 
     // Event payload captures the recording/composition linkage.
-    let mut events = event::events_by_type<RecordingPublishedEvent<RecordingShare>>();
+    let mut events = event::events_by_type<RecordingPublishedEvent>();
     assert_eq!(events.length(), 1);
     let (event_rec_id, event_comp_id) =
         recording::recording_published_event_fields(events.pop_back());
@@ -117,7 +116,7 @@ fun composition_publish_twice_aborts() {
     let cap = publish_composition(&mut scenario);
 
     scenario.next_tx(OWNER);
-    let comp = scenario.take_shared<Composition<CompositionShare>>();
+    let comp = scenario.take_shared<Composition>();
     comp.publish(&cap);
 
     destroy(cap);
@@ -132,7 +131,7 @@ fun composition_uid_mut_works_after_publish() {
     let cap = publish_composition(&mut scenario);
 
     scenario.next_tx(OWNER);
-    let mut comp = scenario.take_shared<Composition<CompositionShare>>();
+    let mut comp = scenario.take_shared<Composition>();
     assert!(comp.is_published_state());
     assert!(!comp.is_initialized_state());
     dynamic_field::add(comp.uid_mut(&cap), b"extension", 42u64);
@@ -155,7 +154,7 @@ fun recording_publish_twice_aborts() {
     let cap = publish_recording(&mut scenario);
 
     scenario.next_tx(OWNER);
-    let rec = scenario.take_shared<Recording<RecordingShare>>();
+    let rec = scenario.take_shared<Recording>();
     rec.publish(&cap);
 
     destroy(cap);
@@ -185,7 +184,7 @@ fun recording_uid_mut_works_after_publish() {
     let cap = publish_recording(&mut scenario);
 
     scenario.next_tx(OWNER);
-    let mut rec = scenario.take_shared<Recording<RecordingShare>>();
+    let mut rec = scenario.take_shared<Recording>();
     assert!(rec.is_published_state());
     assert!(!rec.is_initialized_state());
     dynamic_field::add(rec.uid_mut(&cap), b"master", 7u64);

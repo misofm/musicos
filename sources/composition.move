@@ -1,29 +1,14 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// A musical composition: the underlying written work that recordings are
-/// based on, with its own fixed-supply share token (100M, 6 decimals).
-///
-/// Core stores what a composition *is* — identity, share type, and the
-/// royalty rate it earns from recordings. Everything else (title, credits)
-/// is presentation and lives in extensions attached via `uid_mut`; core
-/// publish enforces no attribution.
-///
-/// Lifecycle: `Initialized -> Published`. A composition is `key`-only with no
-/// `drop` and `publish` is its sole by-value consumer, so create-and-publish
-/// is atomic: an `Initialized` object cannot outlive its creating transaction
-/// and every composition on-chain is `Published` and shared.
-///
-/// Embedded fields freeze at publish; dynamic fields stay admin-mutable
-/// forever via `uid_mut`. Integrators should model the cap holder as able to
-/// mutate or delete extension data at any time.
+/// A musical composition, identified independently of ownership or tokenization.
+/// Embedded relationships freeze at publication. Extensions attach through
+/// admin-authorized UID access, which remains available after publication.
+/// Objects are key-only: creation must end with publication in the same transaction.
 module musicos::composition;
 
-use bps::bps::{Self, BPS};
-use share::share;
-use sui::balance::Balance;
-use sui::coin::TreasuryCap;
-use sui::coin_registry::Currency;
+// === Imports ===
+
 use sui::derived_object::claim;
 use sui::event::emit;
 
@@ -32,26 +17,27 @@ use sui::bcs::to_bytes;
 
 // === Errors ===
 
+/// The admin capability belongs to another object.
+const EUnauthorized: u64 = 0;
+
 // State errors (10-19)
 /// Operation requires Initialized state but composition is in a different state.
 const ENotInitializedState: u64 = 10;
 
 // === Structs ===
 
-/// The underlying written work; `CompositionShare` is its share token type.
-public struct Composition<phantom CompositionShare> has key {
+/// The underlying written work.
+public struct Composition has key {
     id: UID,
     /// Current lifecycle state.
     state: CompositionState,
-    /// Royalty rate this composition earns from each recording's revenue.
-    /// Immutable; see `new`.
-    royalty_rate: BPS,
 }
 
 /// Authorizes admin operations on one composition. Its address is derived
 /// from the composition under `CompositionAdminCapKey`.
-public struct CompositionAdminCap<phantom CompositionShare> has key, store {
+public struct CompositionAdminCap has key, store {
     id: UID,
+    composition_id: ID,
 }
 
 /// Derivation key for `CompositionAdminCap`.
@@ -69,87 +55,59 @@ public enum CompositionState has drop, store {
 
 // === Events ===
 
-/// Emitted once when a composition is published: identity and immutable
-/// royalty rate. The publish time is the event's transaction timestamp.
-/// Everything else (share type, sender, currency and treasury cap ids, admin
-/// cap address, share supply) is derivable from the transaction and the
-/// same-transaction `share::ShareInitializedEvent`.
-public struct CompositionPublishedEvent<phantom CompositionShare> has copy, drop {
+/// Emitted once when the composition is published.
+public struct CompositionPublishedEvent has copy, drop {
     composition_id: ID,
-    royalty_rate_bps: u16,
 }
 
 // === Public Functions ===
 
-/// Creates a composition with the given royalty rate and initializes its
-/// share token (100M supply, 6 decimals). Returns the composition, its admin
-/// cap, and the full initial share balance.
-///
-/// The rate is immutable and bounded only by `bps::new` (0–10000 bps): 0% is
-/// allowed and there is no protocol ceiling. Whether a rate is reasonable is
-/// a client-side concern; per-deal deviations settle as voluntary share
-/// transfers after recording creation.
-public fun new<CompositionShare>(
-    royalty_rate_bps: u16,
-    share_currency: &mut Currency<CompositionShare>,
-    share_treasury_cap: TreasuryCap<CompositionShare>,
-    ctx: &mut TxContext,
-): (
-    Composition<CompositionShare>,
-    CompositionAdminCap<CompositionShare>,
-    Balance<CompositionShare>,
-) {
-    let mut composition = Composition<CompositionShare> {
+/// Creates the composition and its object-bound admin capability.
+public fun new(ctx: &mut TxContext): (Composition, CompositionAdminCap) {
+    let mut composition = Composition {
         id: object::new(ctx),
         state: CompositionState::Initialized,
-        royalty_rate: bps::new(royalty_rate_bps),
     };
-
-    let composition_admin_cap = CompositionAdminCap<CompositionShare> {
+    let composition_id = object::id(&composition);
+    let cap = CompositionAdminCap {
         id: claim(&mut composition.id, CompositionAdminCapKey()),
+        composition_id,
     };
-
-    let composition_shares = share::initialize<CompositionShare>(
-        share_currency,
-        share_treasury_cap,
-    );
-
-    (composition, composition_admin_cap, composition_shares)
+    (composition, cap)
 }
 
 /// Publishes the composition: shares it and freezes its embedded fields.
 /// Aborts with `ENotInitializedState` unless `Initialized`.
-public fun publish<CompositionShare>(
-    mut self: Composition<CompositionShare>,
-    _: &CompositionAdminCap<CompositionShare>,
+public fun publish(
+    mut self: Composition,
+    cap: &CompositionAdminCap,
 ) {
+    self.authorize(cap);
     match (&self.state) {
         CompositionState::Initialized => {
             self.state = CompositionState::Published;
 
             let composition_id = object::id(&self);
-            let royalty_rate_bps = self.royalty_rate.value();
 
             transfer::share_object(self);
 
-            emit(CompositionPublishedEvent<CompositionShare> {
+            emit(CompositionPublishedEvent {
                 composition_id,
-                royalty_rate_bps,
             });
         },
         _ => abort ENotInitializedState,
     }
 }
 
-// === View Functions ===
-
-/// The composition's immutable royalty rate — the rate `recording::new` applies.
-public fun royalty_rate<CompositionShare>(self: &Composition<CompositionShare>): BPS {
-    self.royalty_rate
+/// Verifies that the admin capability belongs to this composition.
+public fun authorize(self: &Composition, cap: &CompositionAdminCap) {
+    assert!(object::id(self) == cap.composition_id, EUnauthorized);
 }
 
+// === View Functions ===
+
 /// Read access to the composition's UID (dynamic fields).
-public fun uid<CompositionShare>(self: &Composition<CompositionShare>): &UID {
+public fun uid(self: &Composition): &UID {
     &self.id
 }
 
@@ -158,10 +116,11 @@ public fun uid<CompositionShare>(self: &Composition<CompositionShare>): &UID {
 /// mutable after publish. The `&mut UID` reaches every dynamic field on the
 /// object, though a field keyed by a type private to another module can only
 /// be added or removed through that module.
-public fun uid_mut<CompositionShare>(
-    self: &mut Composition<CompositionShare>,
-    _: &CompositionAdminCap<CompositionShare>,
+public fun uid_mut(
+    self: &mut Composition,
+    cap: &CompositionAdminCap,
 ): &mut UID {
+    self.authorize(cap);
     &mut self.id
 }
 
@@ -171,7 +130,7 @@ public fun uid_mut<CompositionShare>(
 // composition a runtime caller can hold is `Published`.
 
 #[test_only]
-public fun is_initialized_state<CompositionShare>(self: &Composition<CompositionShare>): bool {
+public fun is_initialized_state(self: &Composition): bool {
     match (&self.state) {
         CompositionState::Initialized => true,
         _ => false,
@@ -179,7 +138,7 @@ public fun is_initialized_state<CompositionShare>(self: &Composition<Composition
 }
 
 #[test_only]
-public fun is_published_state<CompositionShare>(self: &Composition<CompositionShare>): bool {
+public fun is_published_state(self: &Composition): bool {
     match (&self.state) {
         CompositionState::Published => true,
         _ => false,
@@ -191,29 +150,9 @@ public fun published_state_bcs_bytes(): vector<u8> {
     to_bytes(&CompositionState::Published)
 }
 
-#[test_only]
-public fun new_for_testing<CompositionShare>(
-    royalty_rate_bps: u16,
-    ctx: &mut TxContext,
-): (Composition<CompositionShare>, CompositionAdminCap<CompositionShare>) {
-    let mut composition = Composition<CompositionShare> {
-        id: object::new(ctx),
-        state: CompositionState::Initialized,
-        royalty_rate: bps::new(royalty_rate_bps),
-    };
-
-    let composition_admin_cap = CompositionAdminCap<CompositionShare> {
-        id: claim(&mut composition.id, CompositionAdminCapKey()),
-    };
-
-    (composition, composition_admin_cap)
-}
-
 /// Unpacks a `CompositionPublishedEvent` (fields are module-private) for test assertions.
 #[test_only]
-public fun composition_published_event_fields<CompositionShare>(
-    event: CompositionPublishedEvent<CompositionShare>,
-): (ID, u16) {
-    let CompositionPublishedEvent { composition_id, royalty_rate_bps } = event;
-    (composition_id, royalty_rate_bps)
+public fun composition_published_event_fields(event: CompositionPublishedEvent): ID {
+    let CompositionPublishedEvent { composition_id } = event;
+    composition_id
 }

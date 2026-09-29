@@ -1,16 +1,11 @@
 // Copyright (c) Miso Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-/// A track: a recording placed on a release with a revenue split. `Track` is
-/// the minimal `(recording, split)` pair plus an assign-once state carrying
-/// the target release id consented to at creation.
-///
-/// `Track` is monomorphic — a `Release` holds tracks from many recordings —
-/// and stores nothing derivable from the recording: its share type, metadata,
-/// and composition are reached through `recording_id`. Revenue routes to the
-/// recording alone; the composition is paid through the recording shares it
-/// owns.
+/// A recording placed on a release with a revenue split and explicit
+/// recording-admin consent to the target release identity.
 module musicos::track;
+
+// === Imports ===
 
 use bps::bps::{Self, BPS};
 use musicos::recording::{Recording, RecordingAdminCap};
@@ -31,7 +26,7 @@ public struct Track has drop, store {
     /// The recording on this track and the routing target for its revenue.
     recording_id: ID,
     /// This track's share of the release's revenue. All tracks in a release
-    /// sum to 100%; the composition's cut is not split out here.
+    /// sum to 100%; downstream allocations belong to extensions.
     split_bps: BPS,
 }
 
@@ -52,18 +47,19 @@ public enum TrackState has drop, store {
 /// Creates a track: the recording admin's consent to this recording's
 /// inclusion in the release `target_release_id` (see `release` for what that
 /// id commits to) at the given split. The recording need not be `Published`;
-/// it shares its type with the cap and supplies the id the track stores.
+/// the cap must belong to this recording.
 ///
 /// No event: a `Track` has `drop` and is not an object, so a creation event
 /// could announce a consent that is then discarded. A track is consumed in
 /// its creating transaction or wrapped by an offer extension, which then
 /// owns withdrawal, expiry, and observability.
-public fun new<RecordingShare>(
-    _: &RecordingAdminCap<RecordingShare>,
-    recording: &Recording<RecordingShare>,
+public fun new(
+    cap: &RecordingAdminCap,
+    recording: &Recording,
     target_release_id: ID,
     track_split_bps_value: u16,
 ): Track {
+    recording.authorize(cap);
     Track {
         state: TrackState::Unassigned(target_release_id),
         recording_id: object::id(recording),
