@@ -31,7 +31,7 @@ fun test_release_track_events_at_255_tracks() {
         track_split_bps,
         nonce,
     );
-    let tracks = vector::tabulate!(255, |index| track::new_for_testing(
+    let tracks = vector::tabulate!(255, |index| track::consent_for_testing(
         recording_ids[index],
         predicted_release_id,
         track_split_bps[index] as u16,

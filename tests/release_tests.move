@@ -1,4 +1,4 @@
-/// `release::new` validation and `track::new` boundary checks. None touch
+/// `release::new` validation and `track::consent` boundary checks. None touch
 /// object ownership; publish and wrong-cap flows live in `post_publish_tests`
 /// and `release_e2e_tests`.
 #[test_only]
@@ -15,8 +15,8 @@ use sui::derived_object;
 
 
 /// Helper to create an ordered tracklist of n tracks sharing splits evenly.
-fun test_tracks(track_count: u64, split_bps: u16, ctx: &mut TxContext): vector<track::Track> {
-    vector::tabulate!(track_count, |_index| track::new_for_testing(
+fun test_tracks(track_count: u64, split_bps: u16, ctx: &mut TxContext): vector<track::TrackConsent> {
+    vector::tabulate!(track_count, |_index| track::consent_for_testing(
         test_helpers::fake_id(ctx),
         test_helpers::fake_id(ctx),
         split_bps,
@@ -89,15 +89,15 @@ fun duplicate_digest_aborts() {
     let ctx = &mut tx_context::dummy();
     let mut registry = release::new_registry_for_testing(ctx);
     let rec_id = test_helpers::fake_id(ctx);
-    let rel_id = test_helpers::fake_id(ctx);
+    let rel_id = registry.derive_target_release_id(vector[rec_id], vector[10000], 7);
 
     let (rel1, cap1) = registry.new(
-        vector[track::new_for_testing(rec_id, rel_id, 10000)],
+        vector[track::consent_for_testing(rec_id, rel_id, 10000)],
         7u256,
     );
     // Identical recording ids, splits, and nonce: identical digest.
     let (rel2, cap2) = registry.new(
-        vector[track::new_for_testing(rec_id, rel_id, 10000)],
+        vector[track::consent_for_testing(rec_id, rel_id, 10000)],
         7u256,
     );
     destroy(rel1);
@@ -127,9 +127,9 @@ fun release_views_reflect_initialized_release() {
     destroy(cap);
 }
 
-// === track::new ===
+// === track::consent ===
 
-/// `track::new` produces a track carrying the target release id
+/// `track::consent` produces a track carrying the target release id
 /// and split it was called with, and reads the recording id off the
 /// `&Recording` argument.
 #[test]
@@ -138,11 +138,11 @@ fun track_new_records_consent() {
     let (comp, comp_cap, rec, rec_cap) = composition_and_recording(ctx);
     let target_release_id = test_helpers::fake_id(ctx);
 
-    let t = track::new(&rec_cap, &rec, target_release_id, 10000);
+    let t = track::consent(&rec, &rec_cap, target_release_id, 10000);
 
-    assert_eq!(t.recording_id(), object::id(&rec));
-    assert_eq!(t.split_bps().value(), 10000);
-    assert_eq!(t.target_release_id(), target_release_id);
+    assert_eq!(t.track().recording_id(), object::id(&rec));
+    assert_eq!(t.track().split_bps().value(), 10000);
+    assert_eq!(t.release_id(), target_release_id);
 
     destroy(t);
     destroy(comp);
@@ -152,15 +152,15 @@ fun track_new_records_consent() {
 }
 
 /// `bps::new` rejects a split above 100% (10,000 BPS) — the validation
-/// `track::new` relies on when constructing `split_bps`.
+/// `track::consent` relies on when constructing `split_bps`.
 #[test, expected_failure(abort_code = bps::EOverflow)]
 fun track_new_split_above_100_percent_aborts() {
     let ctx = &mut tx_context::dummy();
     let (comp, comp_cap, rec, rec_cap) = composition_and_recording(ctx);
 
-    let t = track::new(
-        &rec_cap,
+    let t = track::consent(
         &rec,
+        &rec_cap,
         test_helpers::fake_id(ctx),
         10001, // > 10_000 BPS
     );

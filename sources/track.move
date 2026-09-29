@@ -19,8 +19,6 @@ const EUnauthorizedAssignment: u64 = 0;
 
 /// A recording on a release with its revenue split.
 public struct Track has drop, store {
-    /// The release identity consented to by the recording admin.
-    target_release_id: ID,
     /// The recording on this track and the routing target for its revenue.
     recording_id: ID,
     /// This track's share of the release's revenue. All tracks in a release
@@ -28,28 +26,31 @@ public struct Track has drop, store {
     split_bps: BPS,
 }
 
+/// Recording-admin consent to include a track in one specific release.
+/// Extensions may wrap consent for offers or escrow before release creation.
+public struct TrackConsent has drop, store {
+    release_id: ID,
+    track: Track,
+}
+
 // === Public Functions ===
 
-/// Creates a track: the recording admin's consent to this recording's
-/// inclusion in the release `target_release_id` (see `release` for what that
-/// id commits to) at the given split. The recording need not be `Published`;
-/// the cap must belong to this recording.
-///
-/// No event: a `Track` has `drop` and is not an object, so a creation event
-/// could announce a consent that is then discarded. A track is consumed in
-/// its creating transaction or wrapped by an offer extension, which then
-/// owns withdrawal, expiry, and observability.
-public fun new(
-    cap: &RecordingAdminCap,
+/// Consents to inclusion in a release at the given split.
+/// The capability must belong to the recording. Consent may be discarded or
+/// stored by an extension; release creation consumes it without retaining its ID.
+public fun consent(
     recording: &Recording,
-    target_release_id: ID,
-    track_split_bps_value: u16,
-): Track {
+    cap: &RecordingAdminCap,
+    release_id: ID,
+    split_bps: u16,
+): TrackConsent {
     recording.authorize(cap);
-    Track {
-        target_release_id,
-        recording_id: object::id(recording),
-        split_bps: bps::new(track_split_bps_value),
+    TrackConsent {
+        release_id,
+        track: Track {
+            recording_id: object::id(recording),
+            split_bps: bps::new(split_bps),
+        },
     }
 }
 
@@ -65,34 +66,36 @@ public fun split_bps(self: &Track): BPS {
     self.split_bps
 }
 
-/// Returns the release identity consented to at creation, including after publication.
-public fun target_release_id(self: &Track): ID {
-    self.target_release_id
-}
+/// The release authorized by this consent.
+public fun release_id(self: &TrackConsent): ID { self.release_id }
+
+/// Read-only access to the consented recording and split.
+public fun track(self: &TrackConsent): &Track { &self.track }
 
 // === Package Functions ===
 
-/// Verifies that the enclosing release matches the recording admin's consent.
-public(package) fun validate_target(self: &Track, release_uid: &UID) {
-    assert!(release_uid.to_inner() == self.target_release_id, EUnauthorizedAssignment);
+/// Consumes consent after checking the release identity.
+public(package) fun into_track(self: TrackConsent, release_id: ID): Track {
+    let TrackConsent { release_id: consented_release_id, track } = self;
+    assert!(release_id == consented_release_id, EUnauthorizedAssignment);
+    track
 }
 
 // === Test Functions ===
 
 #[test_only]
-public fun new_for_testing(
+public fun consent_for_testing(
     recording_id: ID,
-    target_release_id: ID,
-    split_bps_value: u16,
-): Track {
-    Track {
-        target_release_id,
-        recording_id,
-        split_bps: bps::new(split_bps_value),
+    release_id: ID,
+    split_bps: u16,
+): TrackConsent {
+    TrackConsent {
+        release_id,
+        track: Track { recording_id, split_bps: bps::new(split_bps) },
     }
 }
 
 #[test_only]
-public fun set_target_release_id_for_testing(self: &mut Track, target_release_id: ID) {
-    self.target_release_id = target_release_id;
+public fun set_release_id_for_testing(self: &mut TrackConsent, release_id: ID) {
+    self.release_id = release_id;
 }

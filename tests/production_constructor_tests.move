@@ -107,6 +107,6 @@ fun foreign_recording_cap_cannot_consent_to_track() {
     let (comp, cap) = composition::new(ctx);
     let (first, first_cap) = recording::new(&comp, ctx);
     let (second, second_cap) = recording::new(&comp, ctx);
-    track::new(&second_cap, &first, object::id(&comp), 10000);
+    track::consent(&first, &second_cap, object::id(&comp), 10000);
     destroy(comp); destroy(cap); destroy(first); destroy(first_cap); destroy(second); destroy(second_cap);
 }

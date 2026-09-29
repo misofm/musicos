@@ -13,7 +13,8 @@ Core defines compositions, recordings, releases, and tracks. Creating an identit
 | `Composition` | Identity and lifecycle |
 | `Recording` | Identity, lifecycle, and immutable composition ID |
 | `Release` | Identity, lifecycle, and ordered tracks |
-| `Track` | Recording ID, release revenue split, and target release ID |
+| `Track` | Recording ID and release revenue split |
+| `TrackConsent` | Authorized release ID and nested track; consumed during release creation |
 
 Composition and recording types and their events have no ownership type parameters.
 Anyone can create a recording referencing an existing composition. The reference establishes a relationship; it does not establish a license or impose a commission.
@@ -32,7 +33,7 @@ recording.publish(&recording_cap);
 
 Composition, recording, and release admin capabilities authorize one specific object.
 Each module's `authorize` checks the capability's stored subject ID against the object.
-Publication and mutable UID access enforce that check. Track creation also checks that the
+Publication and mutable UID access enforce that check. Track consent also checks that the
 recording capability belongs to the supplied recording.
 
 The admin capability represents protocol administration, not fractional economic ownership.
@@ -57,13 +58,27 @@ Release revenue splits remain part of core consent. A release's ID is derived fr
 the ordered `(recording_id, split)` pairs and creator nonce under the shared
 `ReleaseRegistry`. Splits must total 10,000 basis points.
 
-A recording admin creates a track targeting that exact release ID. Publication checks
-each track's target. Containment in a release represents assignment; tracks have no
-separate assignment state, and their target IDs remain readable after publication. Consent therefore binds membership, ordering,
-and release splits. Names, artwork, and other extension data are outside that commitment.
+A recording admin calls `track::consent(&recording, &cap, release_id, split_bps)`.
+It returns a store-only `TrackConsent`, which extensions can wrap for offers or
+escrow. Its getters expose `release_id()` and read-only `track()` access.
+
+`release::new` accepts `vector<TrackConsent>`, derives the release ID from the
+nested tracks and nonce, and validates and consumes every consent. It stores only
+`vector<Track>`; consent release IDs are discarded. Unwrapping is package-private,
+and neither type has `copy`. There is no public constructor for a bare track.
+
+```move
+let consent = track::consent(&recording, &recording_cap, release_id, 10000);
+let (release, release_cap) = release::new(&mut registry, vector[consent], nonce);
+release.publish(&release_cap);
+```
+
+Consent binds membership, ordering, and release splits. Names, artwork, and other
+extension data are outside that commitment. Publication emits the track events;
+it does not repeat consent validation.
 
 The registry is created once during package initialization. Release creation is
-permissionless, but requires the recording-admin-authorized tracks.
+permissionless, but requires the recording-admin-authorized consents.
 
 ## Lifecycle and events
 

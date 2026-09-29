@@ -80,7 +80,7 @@ fun publish_release(scenario: &mut test_scenario::Scenario): (release::ReleaseAd
     let ctx = scenario.ctx();
     let recording_id = test_helpers::fake_id(ctx);
     let (rel, cap) = release::new_for_testing(
-        vector[track::new_for_testing(
+        vector[track::consent_for_testing(
             recording_id,
             test_helpers::fake_id(ctx),
             10000,

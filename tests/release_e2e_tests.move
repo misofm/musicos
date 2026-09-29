@@ -4,7 +4,7 @@
 /// End-to-end release flow across transactions and actors, through the
 /// canonical shared `ReleaseRegistry`: a songwriter publishes a composition,
 /// an artist publishes a recording and consents to the predicted release id
-/// via `track::new`, a label assembles and publishes the release (verifying
+/// via `track::consent`, a label assembles and publishes the release (verifying
 /// every track targets it), and anyone can read the result.
 #[test_only]
 module musicos::release_e2e_tests;
@@ -69,7 +69,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
         recording::recording_published_event_fields(recording_events.pop_back());
     test_scenario::return_shared(comp);
 
-    // === Tx 3 (ARTIST): consent to the predicted release id via track::new ===
+    // === Tx 3 (ARTIST): consent to the predicted release id via track::consent ===
     scenario.next_tx(ARTIST);
     let comp = scenario.take_shared<Composition>();
     let rec = scenario.take_shared<Recording>();
@@ -81,7 +81,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
         vector[10000u64],
         NONCE,
     );
-    let t = track::new(&rec_cap, &rec, predicted_release_id, 10000);
+    let t = track::consent(&rec, &rec_cap, predicted_release_id, 10000);
     test_scenario::return_shared(comp);
     test_scenario::return_shared(rec);
     test_scenario::return_shared(registry);
@@ -94,7 +94,7 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(object::id(&rel), predicted_release_id);
     assert_eq!(event::events_by_type<release::ReleasePublishedEvent>().length(), 0);
 
-    rel.publish(&rel_cap); // verifies track assignment, shares
+    rel.publish(&rel_cap); // emits track events and shares
 
     let mut published_events = event::events_by_type<release::ReleasePublishedEvent>();
     assert_eq!(published_events.length(), 1);
@@ -136,7 +136,6 @@ fun full_track_release_flow_publishes_at_derived_id() {
     assert_eq!(rel.tracks().length(), 1);
     assert!(rel.tracks().any!(|track| track.recording_id() == recording_id));
     let track_ref = &rel.tracks()[0];
-    assert_eq!(track_ref.target_release_id(), predicted_release_id);
     assert_eq!(track_ref.recording_id(), recording_id);
     assert_eq!(track_ref.split_bps().value(), 10000);
     test_scenario::return_shared(rel);
@@ -146,10 +145,10 @@ fun full_track_release_flow_publishes_at_derived_id() {
 }
 
 /// A track whose creator consented to a different release cannot be
-/// published in this one — the digest binding is enforced at
-/// `release::publish`.
+/// consumed into this one — the digest binding is enforced at
+/// `release::new`.
 #[test, expected_failure(abort_code = track::EUnauthorizedAssignment)]
-fun publish_aborts_when_track_targets_a_different_release() {
+fun new_aborts_when_consent_targets_a_different_release() {
     let mut scenario = test_scenario::begin(SONGWRITER);
     release::init_for_testing(scenario.ctx());
 
@@ -170,14 +169,15 @@ fun publish_aborts_when_track_targets_a_different_release() {
         vector[10000u64],
         1,
     );
-    let t = track::new(&rec_cap, &rec, wrong_release_id, 10000);
+    let t = track::consent(&rec, &rec_cap, wrong_release_id, 10000);
     test_scenario::return_shared(registry);
 
     scenario.next_tx(SONGWRITER);
     // ...but the release is created with nonce 2: different derived id.
     let mut registry = scenario.take_shared<ReleaseRegistry>();
     let (rel, rel_cap) = registry.new(vector[t], 2);
-    rel.publish(&rel_cap); // aborts: track targets a different release
+    destroy(rel);
+    destroy(rel_cap); // new must reject without calling publish
 
     // Unreachable, but the compiler requires all non-drop values consumed.
     abort
