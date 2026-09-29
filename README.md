@@ -37,6 +37,8 @@ Publication and mutable UID access enforce that check. Track consent also checks
 recording capability belongs to the supplied recording.
 
 The admin capability represents protocol administration, not fractional economic ownership.
+Capabilities are transferable bearer objects: transferring one hands over administration.
+Core has no recovery authority or forced revocation mechanism.
 
 ## Extensions
 
@@ -95,6 +97,16 @@ extension access remains available afterward.
 | `ReleasePublishedEvent` | Release ID and creator nonce |
 
 Track events are emitted in tracklist order. Transaction metadata supplies sender and time.
+
+## Move conventions
+
+The package follows Sui's [Move best practices](https://docs.sui.io/develop/write-move/move-best-practices):
+constructors return values, publication is separate, capabilities are object-bound,
+consents are consumed by value, and tests live outside production sources.
+
+Track and TrackConsent share a module to keep consent construction and unwrapping
+encapsulated. The release registry is shared only by package initialization to
+preserve its single namespace. Commit publication metadata when this source is deployed.
 
 ## Dependencies
 

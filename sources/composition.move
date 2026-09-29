@@ -37,6 +37,7 @@ public struct Composition has key {
 /// from the composition under `CompositionAdminCapKey`.
 public struct CompositionAdminCap has key, store {
     id: UID,
+    /// The object this capability authorizes.
     composition_id: ID,
 }
 
@@ -110,6 +111,8 @@ public fun authorize(self: &Composition, cap: &CompositionAdminCap) {
 public fun uid(self: &Composition): &UID {
     &self.id
 }
+
+// === Admin Functions ===
 
 /// Mutable access to the composition's UID, gated by the admin cap. Works in
 /// any lifecycle state: dynamic fields are the extension surface and stay

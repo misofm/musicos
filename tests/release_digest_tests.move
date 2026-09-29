@@ -113,7 +113,7 @@ fun single_target_release_id_derivation_is_deterministic() {
     // Verify digest matches TypeScript output
     let digest = calculate_release_digest(recording_ids, track_splits, nonce);
     let expected_digest = x"dccbc50994240ba6de125686dc040b27b8c739fe8b55d8d7cbf923535b57af6c";
-    assert!(digest == expected_digest, 0);
+    assert_eq!(digest, expected_digest);
 
     // The release id depends on the fixture registry's id, so only determinism
     // is checked here.
@@ -140,7 +140,7 @@ fun multiple_target_release_id_derivation_is_deterministic() {
     // Verify digest matches TypeScript output
     let digest = calculate_release_digest(recording_ids, track_splits, nonce);
     let expected_digest = x"58895ea293730fcbca59e08cadd81c3a8da7c0604fa014ac629b0a8f543f4141";
-    assert!(digest == expected_digest, 0);
+    assert_eq!(digest, expected_digest);
 
     // Verify derive_target_release_id is deterministic
     let release_id_1 = registry.derive_target_release_id(recording_ids, track_splits, nonce);

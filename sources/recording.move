@@ -41,6 +41,7 @@ public struct Recording has key {
 /// the recording under `RecordingAdminCapKey`.
 public struct RecordingAdminCap has key, store {
     id: UID,
+    /// The object this capability authorizes.
     recording_id: ID,
 }
 
@@ -123,6 +124,8 @@ public fun composition_id(self: &Recording): ID {
 public fun uid(self: &Recording): &UID {
     &self.id
 }
+
+// === Admin Functions ===
 
 /// Mutable access to the recording's UID, gated by the admin cap. Works in
 /// any lifecycle state; see `composition::uid_mut` for the trust model.

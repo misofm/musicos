@@ -20,12 +20,16 @@
 /// constructor, deletion path, or mutable UID accessor.
 module musicos::release;
 
-use bps::bps;
-use musicos::track::{Track, TrackConsent};
+// === Imports ===
+
 use sui::bcs::to_bytes;
 use sui::derived_object::{Self, claim};
 use sui::event::emit;
 use sui::hash::blake2b256;
+
+use bps::bps;
+
+use musicos::track::{Track, TrackConsent};
 
 // === Errors ===
 
@@ -133,7 +137,7 @@ fun init(ctx: &mut TxContext) {
 }
 
 /// Assembles a release under the canonical registry. Permissionless: consent
-/// is carried by the consents, each created for this exact derived id. Returns
+/// comes from recording-admin consents for this exact derived ID. Returns
 /// the release and admin cap by value so `publish` can follow in the same
 /// PTB. Aborts with `ENoTracks` on an empty tracklist and
 /// `EInvalidTrackSplitsSum` unless splits sum to 10,000 bps; claiming an
@@ -171,21 +175,8 @@ public fun new(
     (release, release_admin_cap)
 }
 
-/// Derives the release id `new` would claim for these inputs, without
-/// creating a release. Read-only registry access, so it parallelizes.
-public fun derive_target_release_id(
-    self: &ReleaseRegistry,
-    recording_ids: vector<ID>,
-    track_split_values: vector<u64>,
-    nonce: u256,
-): ID {
-    let release_digest = calculate_release_digest(recording_ids, track_split_values, nonce);
-    derived_object::derive_address(self.id.to_inner(), ReleaseKey(release_digest)).to_id()
-}
-
 /// Publishes the release: emits one `ReleaseTrackAssignedEvent` per track,
-/// shares it, and emits
-/// `ReleasePublishedEvent`. Aborts with `EUnauthorized` on a mismatched cap
+/// shares it, and emits `ReleasePublishedEvent`. Aborts with `EUnauthorized` on a mismatched cap
 /// and `ENotInitializedState` unless `Initialized`.
 public fun publish(mut self: Release, cap: &ReleaseAdminCap) {
     self.authorize(cap);
@@ -213,6 +204,19 @@ public fun authorize(self: &Release, cap: &ReleaseAdminCap) {
 
 // === View Functions ===
 
+/// Derives the release id `new` would claim for these inputs, without
+/// creating a release. Read-only registry access, so it parallelizes.
+public fun derive_target_release_id(
+    self: &ReleaseRegistry,
+    recording_ids: vector<ID>,
+    track_split_values: vector<u64>,
+    nonce: u256,
+): ID {
+    let release_digest = calculate_release_digest(recording_ids, track_split_values, nonce);
+    derived_object::derive_address(self.id.to_inner(), ReleaseKey(release_digest)).to_id()
+}
+
+
 /// The ordered tracklist — the single accessor for length, membership, and
 /// per-track data.
 public fun tracks(self: &Release): &vector<Track> {
@@ -224,12 +228,16 @@ public fun uid(self: &Release): &UID {
     &self.id
 }
 
+// === Admin Functions ===
+
 /// Mutable access to the release's UID, gated by the admin cap. Works in any
 /// lifecycle state; see `composition::uid_mut` for the trust model.
 public fun uid_mut(self: &mut Release, cap: &ReleaseAdminCap): &mut UID {
     self.authorize(cap);
     &mut self.id
 }
+
+// === Private Functions ===
 
 /// The release digest:
 /// `blake2b256(bcs(recording_ids) || bcs(split_bps as u64) || bcs(nonce))`.
@@ -248,8 +256,7 @@ fun calculate_release_digest(
     blake2b256(&hash_input)
 }
 
-/// Emits one
-/// `ReleaseTrackAssignedEvent` per track in tracklist order.
+/// Emits one `ReleaseTrackAssignedEvent` per track in tracklist order.
 fun emit_track_events(self: &Release) {
     let release_id = self.id.to_inner();
     let mut position = 0;

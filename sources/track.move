@@ -8,6 +8,7 @@ module musicos::track;
 // === Imports ===
 
 use bps::bps::{Self, BPS};
+
 use musicos::recording::{Recording, RecordingAdminCap};
 
 // === Errors ===
@@ -29,7 +30,9 @@ public struct Track has drop, store {
 /// Recording-admin consent to include a track in one specific release.
 /// Extensions may wrap consent for offers or escrow before release creation.
 public struct TrackConsent has drop, store {
+    /// The exact release identity authorized by the recording admin.
     release_id: ID,
+    /// The recording and split committed to by this consent.
     track: Track,
 }
 
